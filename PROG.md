@@ -104,7 +104,7 @@ The x64 Windows executable now embeds a multi-resolution icon containing 16, 32,
 
 The upstream source for the original artwork is https://github.com/benkaraban/blip-blop/blob/master/vc-projects/Blip_n_Blop_3/data/inter.gfx. The 2002 LOADED Studio Windows release and its cover/screenshots were cross-checked at https://oldgamesdownload.com/game/blip-blop-balls-of-steel-m3w/ and https://gamesdb.launchbox-app.com/games/images/30130-blip-blop-balls-of-steel. Those external images were not copied into the repository.
 
-VS2022 x64 Debug and Release builds both succeeded with the resource compiler producing a 108,140-byte `BlipnBlop.res` for each configuration. Windows' `Icon.ExtractAssociatedIcon` successfully extracted the new 32x32 icon from both generated executables; the extracted PNGs had identical SHA-256 hashes and the Release extraction was visually inspected against the source artwork. The `.ico` was also inspected programmatically and contains all six intended sizes. Windows Explorer and taskbar presentation were not visually tested, so shell icon-cache behavior is not claimed.
+VS2022 x64 Debug and Release builds both succeeded with the resource compiler producing an 89,880-byte `BlipnBlop.res` for each configuration. Windows' `Icon.ExtractAssociatedIcon` successfully extracted the new 32x32 icon from both generated executables; the extracted PNGs had identical SHA-256 hashes and the Release extraction was visually inspected against the source artwork. The `.ico` was also inspected programmatically and contains all six intended sizes. Windows Explorer and taskbar presentation were not visually tested, so shell icon-cache behavior is not claimed.
 
 ## Architecture audit
 
