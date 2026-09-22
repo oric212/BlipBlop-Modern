@@ -1,0 +1,29 @@
+# CMake and build output
+/build/
+/out/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+
+# Visual Studio
+/.vs/
+*.suo
+*.user
+*.VC.db
+*.VC.VC.opendb
+
+# Compiled files
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.dll
+*.log
+
+# Editors and operating systems
+/.vscode/
+/.idea/
+*.swp
+.DS_Store

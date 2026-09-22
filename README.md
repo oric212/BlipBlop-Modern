@@ -1,3 +1,15 @@
+# BlipBlop-Modern
+
+BlipBlop-Modern is a source-port and compatibility-modernization effort for the original Blip'n Blop. Its goal is to make the existing game run reliably on modern Windows PCs, x64 hardware, and modern displays while preserving the original gameplay, mechanics, timing, levels, assets, and overall feel.
+
+This repository builds upon the original Blip'n Blop source code and the work of its developers and previous contributors. The upstream project is available at [github.com/benkaraban/blip-blop](https://github.com/benkaraban/blip-blop). This modernization does not claim authorship of the original game or its content.
+
+See [PROG.md](PROG.md) for the current verified status and [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the staged modernization roadmap.
+
+---
+
+# Original README
+
 Linux: ![linux](https://travis-ci.org/Vermeille/blip-blop.svg?branch=master)
 Windows: [![Build status](https://ci.appveyor.com/api/projects/status/n8rv6hstgmlx4j0a/branch/master?svg=true)](https://ci.appveyor.com/project/Vermeille/blip-blop/branch/master)
 

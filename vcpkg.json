@@ -1,0 +1,14 @@
+{
+  "name": "blipnblop-modern",
+  "version-string": "0.1.0",
+  "builtin-baseline": "68112cf89d41fdb70c5910f7581707135be298f4",
+  "dependencies": [
+    "sdl2",
+    {
+      "name": "sdl2-mixer",
+      "features": [
+        "mpg123"
+      ]
+    }
+  ]
+}
