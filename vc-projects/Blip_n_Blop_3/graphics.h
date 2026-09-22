@@ -56,13 +56,26 @@ class Graphics {
     struct RendererDeleter {
         void operator()(SDL_Renderer* ptr) { SDL_DestroyRenderer(ptr); }
     };
+    struct TextureDeleter {
+        void operator()(SDL_Texture* ptr) { SDL_DestroyTexture(ptr); }
+    };
 
     std::unique_ptr<SDL_Window, WindowDeleter> window_;
     std::unique_ptr<SDL_Renderer, RendererDeleter> renderer_;
-    bool fullscreen_;
-    int x_;
-    int y_;
-    int d_;
+    std::unique_ptr<SDL_Texture, TextureDeleter> frame_texture_;
+    bool fullscreen_ = false;
+    int x_ = 640;
+    int y_ = 480;
+    int d_ = 32;
+    int windowed_x_ = SDL_WINDOWPOS_CENTERED;
+    int windowed_y_ = SDL_WINDOWPOS_CENTERED;
+    int windowed_width_ = 640;
+    int windowed_height_ = 480;
+    int last_output_width_ = 0;
+    int last_output_height_ = 0;
+
+    void CreateFrameTexture();
+    SDL_Rect PresentationRect(int output_width, int output_height) const;
 
    public:
     void Init();

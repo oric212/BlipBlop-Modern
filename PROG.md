@@ -14,7 +14,7 @@ cmd.exe /c out\vcpkg\bootstrap-vcpkg.bat -disableMetrics
 & 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' --build out/build-vs2022 --config Release --target deploy
 ```
 
-Result: `out/build-vs2022/vc-projects/Blip_n_Blop_3/Release/BlipnBlop.exe` and the required dependency DLLs were produced. A clean build still emits the known `pause_menu.cpp(30): C4715` warning because `PauseMenu::ProcessEvent` does not return a value on every path; Prompt 2 did not change that code.
+Result: `out/build-vs2022/vc-projects/Blip_n_Blop_3/Release/BlipnBlop.exe` and the required dependency DLLs were produced. Prompt 3 fixed the `PauseMenu::ProcessEvent` missing-return warning; the Prompt 4 Release build completed without warnings from the changed rendering files.
 
 The Visual Studio-bundled vcpkg client was also tried. Its pinned older ports referenced a removed MSYS2 pkgconf archive, while current ports require a newer vcpkg client. A current workspace-local vcpkg checkout succeeded. Build directories are ignored and are not repository content.
 
@@ -76,12 +76,24 @@ LGX output now uses the destination surface's actual `format->BytesPerPixel` and
 
 VS2022 x64 Release and Debug builds both succeeded. The previous `C4715` pause-menu warning is gone, and no compiler warnings were emitted by the changed files. Release deployment regenerated `game-build/`. A standalone launch from an unrelated `%TEMP%` working directory remained alive for 20 seconds and logged the executable-relative `game-build/` resource root. Captured intro frames showed representative decoded artwork with coherent colors, transparency, and geometry and no obvious corruption. Automated input did not reach the menu during the bounded intro sequence, so character selection, first-level loading, pause/resume, and interactive gameplay remain unverified.
 
+## Prompt 4 modern display presentation
+
+The game continues to render all simulation and artwork into the original 640x480 software surface. `Graphics::Flip` now uploads that surface to one reusable 640x480 streaming texture using the surface's actual pixel format and pitch. The texture is no longer created and destroyed every frame, and nearest-neighbor filtering preserves the original pixel artwork.
+
+Presentation uses `SDL_GetRendererOutputSize`, so destination calculations use drawable pixels rather than DPI-scaled window coordinates. The largest 4:3 rectangle that fits the drawable is centered and the remainder is cleared to black, producing pillarboxing or letterboxing without exposing more world or changing any gameplay coordinate. Windows are centered, resizable, and created with `SDL_WINDOW_ALLOW_HIGHDPI`. SDL is asked for per-monitor-v2 DPI awareness before initialization.
+
+Fullscreen now uses `SDL_WINDOW_FULLSCREEN_DESKTOP` on the existing window and renderer instead of recreating the graphics stack or requesting an exclusive display mode. The last windowed position and client size are saved on entry and restored on exit.
+
+VS2022 x64 Release built successfully and the deploy target regenerated `game-build/`. The deployed executable was launched from unrelated `%TEMP%` working directories. On the available 4K high-DPI display, fullscreen reported a 3840x2160 drawable and a centered 2880x2160 game destination at `(480,0)`. Windowed resize requests of 1280x720, 1920x1080, 2560x1440, and 3840x2160 were exercised; because the test controller itself used DPI-scaled Win32 client coordinates, SDL reported corresponding physical drawables of 2241x1261, 3361x1891, 4481x2521, and 5284x2524. Every logged destination retained 4:3 and remained centered. The last oversized window was constrained by the desktop, as expected.
+
+A bounded visual run skipped the intro and reached the main menu. Captures showed coherent intro/menu artwork and black side bars without obvious stretching or corruption. The fullscreen option entered borderless fullscreen and returned to the saved 1280x720 window client size without crashing. The process remained alive throughout and was stopped by the test harness. Character selection, the first level, multi-monitor movement, changing monitor DPI while running, and mouse-coordinate translation were not interactively tested; current gameplay menus do not consume mouse coordinates.
+
 ## Architecture audit
 
 - **Entry point and startup:** `blip_n_blop_3.cpp` contains `main`. `InitApp` initializes the SDL_mixer-backed FMOD compatibility API, reads `data/bb.cfg` and `data/bb.scr`, loads localized text, initializes graphics/input, creates the 640x480 surfaces, initializes the LGX decoder, and loads fonts/interface banks. `main` calls `Game::go`, then writes high scores and configuration.
 - **Main game flow:** `Game::go` in `game.cpp` owns the intro/title/character-selection loop and starts `jouePartie`. Each level runs `gameLoop` until death, completion, skip, or quit. `UpdateRegulator` preserves the original fixed-step simulation at an approximately 11 ms step and may perform zero or multiple simulation updates per rendered frame.
-- **Rendering:** `graphics.cpp/.h`, `dd_gfx.cpp/.h`, and `sdl_surface.h` form an SDL2 implementation of the old DirectDraw-shaped API. Gameplay renders to 640x480 SDL surfaces; `Graphics::Flip` creates a texture from the back surface every frame and copies it to an SDL renderer. Fullscreen currently uses exclusive `SDL_WINDOW_FULLSCREEN`; window placement incorrectly uses the requested width/height as x/y coordinates. There is no aspect-preserving modern output policy yet.
-- **Image/assets:** `picture_bank`, `picture`, `fonte`, and `lgx_packer` decode the custom GFX/LGX and font containers. `LGXpacker` directly writes pixels into locked SDL surfaces and contains 16/32-bit and pitch assumptions that are high-risk on modern formats.
+- **Rendering:** `graphics.cpp/.h`, `dd_gfx.cpp/.h`, and `sdl_surface.h` form an SDL2 implementation of the old DirectDraw-shaped API. Gameplay renders to 640x480 SDL surfaces; `Graphics::Flip` uploads that surface to a reusable streaming texture and presents it through a centered 4:3 destination in the renderer's drawable area. The window is centered/resizable/high-DPI-aware and fullscreen uses the desktop mode without recreating the graphics stack.
+- **Image/assets:** `picture_bank`, `picture`, `fonte`, and `lgx_packer` decode the custom GFX/LGX and font containers. `LGXpacker` writes pixels into locked SDL surfaces and now honors each surface's actual format and row pitch; embedded decoder input-length validation remains incomplete.
 - **Platform abstraction:** SDL2 supplies windows, surfaces, rendering, events, timing, and joysticks. The code retains DirectDraw/DirectInput/FMOD-shaped compatibility interfaces and many global objects. Windows-specific live code is mainly `MessageBox` diagnostics and the GUI subsystem; old Win32 window procedure code is disabled.
 - **Input:** `input.cpp/.h` polls SDL events into legacy key/joystick buffers and aliases configured controls through `config.cpp`. It uses raw SDL joystick APIs, fixed arrays, unchecked string copying, and suspicious joystick event indexing. Keyboard behavior must remain the regression reference.
 - **Audio/music:** `fake_fmod.cpp` maps the legacy FMOD-facing calls to SDL2_mixer. `SoundBank` reads embedded WAV samples from SFX banks; `MusicBank` loads music paths from MBK banks. Mixer initialization requests OGG/MOD support while shipped music also includes MP3, hence the vcpkg mpg123 feature.
@@ -93,7 +105,7 @@ VS2022 x64 Release and Debug builds both succeeded. The previous `C4715` pause-m
 
 ### PR #9 — critical crashes and Linux compatibility
 
-PR #9 has two commits and changes LGX decoding, halftone/pause rendering, path normalization, SDL window/scaling behavior, and Linux CMake linking. Its most valuable findings are the 32-bit SDL pixel/pitch mismatch in `LGXpacker`, the missing surface unlock/bounds handling in `halfTone`, and Windows separators embedded in level data. These should be reimplemented and tested narrowly.
+PR #9 has two commits and changes LGX decoding, halftone/pause rendering, path normalization, SDL window/scaling behavior, and Linux CMake linking. Its most valuable findings were the 32-bit SDL pixel/pitch mismatch in `LGXpacker`, the missing surface unlock/bounds handling in `halfTone`, and Windows separators embedded in level data. Those runtime fixes have now been reimplemented narrowly and tested rather than copied wholesale.
 
 Do not copy it wholesale: it rewrites the README instead of preserving history, changes `bb.cfg`, forces the software renderer, combines several display-policy changes, performs in-place path mutation, and includes defensive early returns that can hide initialization errors. Its LGX changes need validation against surface formats and pitch rather than assuming every surface is 32-bit. The pause-menu missing return is valid but should return the correct named menu result after its contract is confirmed.
 
@@ -131,21 +143,23 @@ The build ideas are useful and informed this baseline, but should not be copied 
 - Hardened LGX output and halftone access for actual SDL formats, pitch, bounds, and lock lifetime.
 - Removed the pause-menu missing-return undefined behavior and warning.
 - Verified x64 Release and Debug builds plus a 20-second deployed-runtime visual smoke test.
+- Added reusable-texture presentation with centered 4:3 scaling, resizable high-DPI windows, and desktop fullscreen switching.
+- Verified a 4K fullscreen drawable, representative window resizes, main-menu presentation, and fullscreen round-trip in the deployed build.
 
 ## Known problems
 
-- Interactive runtime behavior is unverified.
+- Broader interactive gameplay behavior beyond the main menu and display controls remains unverified.
 - `BlipBlop.log` is still opened relative to the initial working directory before `main`.
 - In-memory LGX decoding cannot fully reject truncated input until callers provide buffer lengths.
-- PR #9's crash, pitch, unlock, and path fixes are not yet integrated.
-- `PauseMenu::ProcessEvent` has a missing-return warning.
-- Modern scaling, aspect-ratio handling, high-DPI behavior, and borderless fullscreen are absent.
+- Multi-monitor behavior and moving a live window between monitors with different DPI settings remain unverified.
+- Mouse-to-logical-coordinate conversion is not implemented; no current gameplay/menu path consumes mouse coordinates.
+- Character selection, first-level presentation, and pause overlays were not interactively verified during Prompt 4.
 - There is no automated test suite or current CI workflow.
 
 ## Current task
 
-Prompt 3 is complete: LGX surface-format/pitch safety, balanced halftone locking and bounds, adjacent standalone LGX ownership safety, and the pause-menu return fix.
+Prompt 4 is complete: the 640x480 logical frame is presented through a reusable SDL texture with centered aspect-correct scaling, resizable/high-DPI windows, and fullscreen-desktop switching.
 
 ## Next task
 
-Prompt 4 is the rendering and modern-display work described in `IMPLEMENTATION_PLAN.md`. It has not been started.
+Prompt 5 is the focused audio and input modernization work described in `IMPLEMENTATION_PLAN.md`. It has not been started.

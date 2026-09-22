@@ -1,34 +1,104 @@
 #include "graphics.h"
 
+#include <algorithm>
+
 #include "errors.h"
 
 extern SDL::Surface* backSurface;
 
+namespace {
+
+constexpr int kLogicalWidth = 640;
+constexpr int kLogicalHeight = 480;
+
+}  // namespace
+
 void Graphics::Init() {
+    SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "permonitorv2");
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
     if (SDL_Init(SDL_INIT_EVERYTHING) == -1) {
         throw std::runtime_error(std::string("Can't initialize SDL") +
                                  SDL_GetError());
     }
 }
 
-void Graphics::ToggleFullscreen() { SetGfxMode(x_, y_, d_, !fullscreen_); }
+void Graphics::ToggleFullscreen() {
+    if (!window_) return;
+
+    if (!fullscreen_) {
+        SDL_GetWindowPosition(window_.get(), &windowed_x_, &windowed_y_);
+        SDL_GetWindowSize(window_.get(), &windowed_width_, &windowed_height_);
+    }
+
+    const Uint32 mode = fullscreen_ ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP;
+    if (SDL_SetWindowFullscreen(window_.get(), mode) != 0) {
+        debug << "Cannot toggle fullscreen: " << SDL_GetError() << "\n";
+        return;
+    }
+
+    fullscreen_ = !fullscreen_;
+    if (!fullscreen_) {
+        SDL_SetWindowSize(window_.get(), windowed_width_, windowed_height_);
+        SDL_SetWindowPosition(window_.get(), windowed_x_, windowed_y_);
+    }
+}
+
 void Graphics::SetGfxMode(int x, int y, int d, bool fullscreen) {
     x_ = x;
     y_ = y;
     d_ = d;
     fullscreen_ = fullscreen;
+
+    const Uint32 window_flags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE |
+                                SDL_WINDOW_ALLOW_HIGHDPI |
+                                (fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
     window_.reset(SDL_ErrWrap(SDL_CreateWindow(
         "Blip&Blop",
+        SDL_WINDOWPOS_CENTERED,
+        SDL_WINDOWPOS_CENTERED,
         x,
         y,
-        x,
-        y,
-        SDL_WINDOW_SHOWN | (fullscreen * SDL_WINDOW_FULLSCREEN))));
+        window_flags)));
 
     renderer_.reset(SDL_ErrWrap(SDL_CreateRenderer(
         window_.get(),
         -1,
         SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC)));
+
+    SDL_SetRenderDrawColor(renderer_.get(), 0, 0, 0, 255);
+    last_output_width_ = 0;
+    last_output_height_ = 0;
+}
+
+void Graphics::CreateFrameTexture() {
+    if (frame_texture_ || !renderer_ || !backSurface || !backSurface->Get()) {
+        return;
+    }
+
+    SDL_Surface* const frame = backSurface->Get();
+    frame_texture_.reset(SDL_ErrWrap(SDL_CreateTexture(renderer_.get(),
+                                                       frame->format->format,
+                                                       SDL_TEXTUREACCESS_STREAMING,
+                                                       kLogicalWidth,
+                                                       kLogicalHeight)));
+    SDL_SetTextureScaleMode(frame_texture_.get(), SDL_ScaleModeNearest);
+}
+
+SDL_Rect Graphics::PresentationRect(int output_width, int output_height) const {
+    int width;
+    int height;
+    if (static_cast<int64_t>(output_width) * kLogicalHeight <=
+        static_cast<int64_t>(output_height) * kLogicalWidth) {
+        width = output_width;
+        height = std::max(1, output_width * kLogicalHeight / kLogicalWidth);
+    } else {
+        height = output_height;
+        width = std::max(1, output_height * kLogicalWidth / kLogicalHeight);
+    }
+    return {(output_width - width) / 2,
+            (output_height - height) / 2,
+            width,
+            height};
 }
 
 SDL::Surface* Graphics::CreatePrimary() {
@@ -129,16 +199,41 @@ bool Graphics::SetColorKey(SDL::Surface* surf, Pixel rgb) {
 }
 
 void Graphics::Flip() {
-    SDL_Texture* tex = 0;
-    tex = SDL_CreateTextureFromSurface(renderer_.get(), backSurface->Get());
+    if (!renderer_ || !backSurface || !backSurface->Get()) return;
+
+    CreateFrameTexture();
+    if (!frame_texture_) return;
+
+    SDL_Surface* const frame = backSurface->Get();
+    if (SDL_UpdateTexture(frame_texture_.get(), NULL, frame->pixels, frame->pitch) !=
+        0) {
+        debug << "Cannot update frame texture: " << SDL_GetError() << "\n";
+        return;
+    }
+
+    int output_width = 0;
+    int output_height = 0;
+    if (SDL_GetRendererOutputSize(renderer_.get(), &output_width, &output_height) !=
+        0 ||
+        output_width <= 0 || output_height <= 0) {
+        debug << "Cannot query renderer output size: " << SDL_GetError() << "\n";
+        return;
+    }
+
+    const SDL_Rect destination = PresentationRect(output_width, output_height);
+    SDL_SetRenderDrawColor(renderer_.get(), 0, 0, 0, 255);
     SDL_RenderClear(renderer_.get());
-    SDL_RenderCopy(renderer_.get(), tex, NULL, NULL);
+    SDL_RenderCopy(renderer_.get(), frame_texture_.get(), NULL, &destination);
     SDL_RenderPresent(renderer_.get());
 
-    SDL_DestroyTexture(tex);
-    // SDL_Delay(1);
-
-    // SDL_SaveBMP(backSurface->Get(), "test/draw.bmp");
+    if (output_width != last_output_width_ || output_height != last_output_height_) {
+        debug << "Presentation: drawable " << output_width << "x" << output_height
+              << ", game " << destination.w << "x" << destination.h << " at "
+              << destination.x << "," << destination.y << "\n"
+              << std::flush;
+        last_output_width_ = output_width;
+        last_output_height_ = output_height;
+    }
 }
 
 void Graphics::FlipV() {
