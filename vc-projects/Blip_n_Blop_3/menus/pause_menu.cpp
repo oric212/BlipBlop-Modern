@@ -27,4 +27,5 @@ int PauseMenu::ProcessEvent() {
         }
         return MenuType::Main;
     }
+    return MenuType::Main;
 }

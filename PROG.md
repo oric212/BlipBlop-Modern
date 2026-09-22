@@ -64,6 +64,18 @@ game-build/
 
 `SDL2_mixer.dll` directly requires `vorbisfile.dll`, `mpg123.dll`, and `wavpackdll.dll`; Vorbis additionally requires `vorbis.dll` and `ogg.dll`. The executable's inspected imports require the three selected MSVC C++ runtime DLLs. No unrelated vcpkg or MSVC runtime DLLs are copied. Running the game may create `BlipBlop.log`; regenerating with `deploy` returns the folder to the clean distribution layout.
 
+## Prompt 3 runtime/x64 hardening
+
+The LGX decoder had two confirmed incompatible output paths: its pitch test assumed two-byte pixels while its writes used four bytes, and the tight-pitch version-0 path cast the same output to 16-bit pixels. Padded rows were advanced as though they were tightly packed. On the current SDL surfaces (`BytesPerPixel == 4`), these contradictions could corrupt decoded images and adjacent memory.
+
+LGX output now uses the destination surface's actual `format->BytesPerPixel` and `pitch`. A single row-aware decoder writes 1-, 2-, 3-, or 4-byte mapped pixel values without unaligned typed-pointer writes. Version-1 runs are limited to the remaining surface pixel count, and a zero-length run cannot hang decoding. Pixel conversion tables and the LGX binary format are unchanged. The standalone LGX file overload now uses a checked `std::streamoff` size and owned byte buffer, fixing its leaked allocation and narrowing to `int`.
+
+`halfTone` previously treated every surface as a tightly packed array of 32-bit pixels, ignored bounds, and calculated rows from width rather than pitch. It now clips the requested rectangle to surface bounds, addresses each row through the locked pitch, reads/writes the actual pixel width, halves RGB through `SDL_GetRGBA`/`SDL_MapRGBA`, preserves alpha, and unlocks on every path following a successful lock. This preserves the intended darkening operation across supported SDL formats.
+
+`PauseMenu::ProcessEvent` now returns `MenuType::Main` when no selection is activated. `MenuGame::Update` defines `Main` as continuing with the pause menu, matching the equivalent idle-menu behavior and removing the undefined missing-return path rather than introducing a numeric sentinel.
+
+VS2022 x64 Release and Debug builds both succeeded. The previous `C4715` pause-menu warning is gone, and no compiler warnings were emitted by the changed files. Release deployment regenerated `game-build/`. A standalone launch from an unrelated `%TEMP%` working directory remained alive for 20 seconds and logged the executable-relative `game-build/` resource root. Captured intro frames showed representative decoded artwork with coherent colors, transparency, and geometry and no obvious corruption. Automated input did not reach the menu during the bounded intro sequence, so character selection, first-level loading, pause/resume, and interactive gameplay remain unverified.
+
 ## Architecture audit
 
 - **Entry point and startup:** `blip_n_blop_3.cpp` contains `main`. `InitApp` initializes the SDL_mixer-backed FMOD compatibility API, reads `data/bb.cfg` and `data/bb.scr`, loads localized text, initializes graphics/input, creates the 640x480 surfaces, initializes the LGX decoder, and loads fonts/interface banks. `main` calls `Game::go`, then writes high scores and configuration.
@@ -93,7 +105,7 @@ The build ideas are useful and informed this baseline, but should not be copied 
 
 ## Important discoveries and compatibility risks
 
-1. LGX decoding and halftone effects assume pixel sizes and sometimes surface width instead of pitch; this is the leading startup/corruption risk.
+1. LGX output and halftone access now honor surface pixel width and pitch, but buffer-length validation for LGX data embedded inside larger custom banks remains incomplete because the legacy memory decoder receives no source length.
 2. Resource lookup is now executable-relative, but changing the process working directory remains a compatibility bridge for untouched legacy call sites. The pre-main log stream still opens relative to the caller's working directory.
 3. The raw binary config format serializes implementation-sized `bool`/`int` values without validation and writes into `data/`.
 4. The renderer recreates a texture every frame, lacks error propagation, and does not preserve 4:3 output on arbitrary windows/displays.
@@ -116,11 +128,15 @@ The build ideas are useful and informed this baseline, but should not be copied 
 - Added focused startup diagnostics for the resource root and missing localized text.
 - Added and verified the reproducible CMake `deploy` target and standalone `game-build/` layout.
 - Verified development, deployed, and unrelated-working-directory startup smoke tests.
+- Hardened LGX output and halftone access for actual SDL formats, pitch, bounds, and lock lifetime.
+- Removed the pause-menu missing-return undefined behavior and warning.
+- Verified x64 Release and Debug builds plus a 20-second deployed-runtime visual smoke test.
 
 ## Known problems
 
 - Interactive runtime behavior is unverified.
 - `BlipBlop.log` is still opened relative to the initial working directory before `main`.
+- In-memory LGX decoding cannot fully reject truncated input until callers provide buffer lengths.
 - PR #9's crash, pitch, unlock, and path fixes are not yet integrated.
 - `PauseMenu::ProcessEvent` has a missing-return warning.
 - Modern scaling, aspect-ratio handling, high-DPI behavior, and borderless fullscreen are absent.
@@ -128,8 +144,8 @@ The build ideas are useful and informed this baseline, but should not be copied 
 
 ## Current task
 
-Prompt 2 is complete: executable-relative resource loading, embedded separator compatibility, focused startup diagnostics, local runtime deployment, and standalone smoke verification.
+Prompt 3 is complete: LGX surface-format/pitch safety, balanced halftone locking and bounds, adjacent standalone LGX ownership safety, and the pause-menu return fix.
 
 ## Next task
 
-Prompt 3 is the focused x64/runtime safety work described in `IMPLEMENTATION_PLAN.md`. It has not been started.
+Prompt 4 is the rendering and modern-display work described in `IMPLEMENTATION_PLAN.md`. It has not been started.
