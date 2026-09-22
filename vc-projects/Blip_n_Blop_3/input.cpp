@@ -34,6 +34,10 @@
 #include "ben_debug.h"
 #include "control_alias.h"
 
+namespace {
+constexpr int INPUT_DEVICE_SWITCH_DEAD_ZONE = 12000;
+}
+
 //-----------------------------------------------------------------------------
 //		Déclaration REELLE de l'objet 'in' global
 //-----------------------------------------------------------------------------
@@ -300,8 +304,10 @@ void Input::update()
 
 		if (e.type == SDL_MOUSEBUTTONDOWN)
 		{
-
+			last_input_device = InputDevice::Keyboard;
 		}
+		if (e.type == SDL_MOUSEMOTION && (e.motion.xrel != 0 || e.motion.yrel != 0))
+			last_input_device = InputDevice::Keyboard;
 
 		if (e.type == SDL_WINDOWEVENT &&
 		    e.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
@@ -319,28 +325,33 @@ void Input::update()
 
 		if (e.type == SDL_JOYBUTTONDOWN || e.type == SDL_JOYBUTTONUP)
 		{
-			if (e.type == SDL_JOYBUTTONDOWN)
-				last_input_device = InputDevice::Controller;
 			const int slot = joystickSlot(e.jbutton.which);
+			if (e.type == SDL_JOYBUTTONDOWN && slot >= 0)
+				last_input_device = js[slot].controller
+				                        ? InputDevice::GameController
+				                        : InputDevice::RawJoystick;
 			if (slot >= 0 && e.jbutton.button < sizeof(js[slot].buttons))
 				js[slot].buttons[e.jbutton.button] =
 				    e.type == SDL_JOYBUTTONDOWN;
 		}
 		if (e.type == SDL_CONTROLLERBUTTONDOWN) {
-			last_input_device = InputDevice::Controller;
+			last_input_device = InputDevice::GameController;
 			const DIJOYSTATE* player_one = controllerForPlayer(0);
 			if (player_one && player_one->instance_id == e.cbutton.which &&
 			    e.cbutton.button == SDL_CONTROLLER_BUTTON_START)
 				pause_pressed = true;
 		}
 		if (e.type == SDL_CONTROLLERAXISMOTION &&
-		    (e.caxis.value < -DEAD_ZONE || e.caxis.value > DEAD_ZONE))
-			last_input_device = InputDevice::Controller;
+		    (e.caxis.value < -INPUT_DEVICE_SWITCH_DEAD_ZONE ||
+		     e.caxis.value > INPUT_DEVICE_SWITCH_DEAD_ZONE))
+			last_input_device = InputDevice::GameController;
 		if (e.type == SDL_JOYHATMOTION)
 		{
-			last_input_device = InputDevice::Controller;
 			const int slot = joystickSlot(e.jhat.which);
 			if (slot < 0) continue;
+			last_input_device = js[slot].controller
+			                        ? InputDevice::GameController
+			                        : InputDevice::RawJoystick;
 			js[slot].directions.down = false;
 			js[slot].directions.right = false;
 			js[slot].directions.left = false;
@@ -358,10 +369,13 @@ void Input::update()
 
 		if (e.type == SDL_JOYAXISMOTION)
 		{
-			if (e.jaxis.value < -DEAD_ZONE || e.jaxis.value > DEAD_ZONE)
-				last_input_device = InputDevice::Controller;
 			const int slot = joystickSlot(e.jaxis.which);
 			if (slot < 0) continue;
+			if (e.jaxis.value < -INPUT_DEVICE_SWITCH_DEAD_ZONE ||
+			    e.jaxis.value > INPUT_DEVICE_SWITCH_DEAD_ZONE)
+				last_input_device = js[slot].controller
+				                        ? InputDevice::GameController
+				                        : InputDevice::RawJoystick;
 		
 			/* Horizontal movement */
 

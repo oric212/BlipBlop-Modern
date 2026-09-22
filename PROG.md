@@ -118,6 +118,18 @@ VS2022 x64 Debug and Release builds compiled successfully. In isolated temporary
 
 The Release `deploy` target regenerated `game-build/` with the current executable, 128 original data files, SDL2/SDL2_mixer, required codec DLLs, and MSVC runtime DLLs. SHA-256 comparison confirmed `game-build/BlipnBlop.exe` is byte-for-byte identical to the final Release executable (`D3277D4DE7052A6BF5FEBD60FED15262B6508CFFBB396F741798003EF890FDF2`). Extracting its associated icon produced the same verified icon hash as the pre-Prompt-6 icon build. A clean deployed run from an unrelated working directory selected `game-build/` as its executable-relative resource root, migrated writable state into an isolated user-data directory, and exited normally with config and scores saved.
 
+## Prompt 7 contextual input prompts and documentation
+
+The existing menu selection box now shows a compact device-aware confirm hint beside the focused item: `ENTER` for keyboard/mouse activity, `[A]` for an SDL-mapped game controller, and `JOY` for the legacy raw-joystick path. The hint uses the original small menu font and reserved space inside the existing shaded box, so it does not replace menu art or add a gameplay HUD element. The key-remapping menu suppresses the hint because that screen waits for a key rather than the normal confirm action. The existing level-briefing start message similarly changes between key, A-button, and generic joystick-button wording without adding another overlay.
+
+Keyboard, mouse, mapped-controller, and raw-joystick events update the last-used-device context immediately, while both keyboard and controller gameplay inputs remain active simultaneously. Axis motion must cross a separate 12000-unit threshold before changing prompt context, preventing ordinary stick noise from repeatedly taking over the prompt. The original 4200-unit gameplay dead zone and all gameplay mappings remain unchanged.
+
+The modernization introduction in `README.md` now documents the project's preservation philosophy, native x64 Windows and standalone layout, 640x480 final-frame presentation, centered largest-fit 4:3 scaling, fractional nearest-neighbor behavior and its tradeoff, controller and keyboard behavior, per-user persistence, and current compatibility hardening. The original README remains intact below the separated modernization material.
+
+VS2022 x64 Debug and Release builds both succeeded, and the Release `deploy` target refreshed `game-build/`. Its executable is byte-for-byte identical to the Release build (`B190D1A81B6F84A2FC5933BD22F844502625C91C9577BB061DD1969F0C977AD1`), and Windows successfully extracted the embedded 32x32 associated icon from both configurations. A standalone run from an unrelated `%TEMP%` working directory remained alive for 12 seconds, accepted a normal window-close request, exited with code 0, and wrote valid config and score files to an isolated per-user test directory.
+
+The native 640x480 title menu was captured during development and visually inspected: the keyboard `ENTER` prompt was legible within the existing shaded selection area and did not overlap the focused label, title art, characters, or other menu entries. The capture-only instrumentation and image were removed before the final builds. No prompt was added to the gameplay HUD or character-selection artwork because there was no existing unobtrusive hint location. Code inspection verified mapped-controller and raw-joystick prompt selection, but no SDL-recognized physical controller was available, so live controller prompt switching, mappings, and reconnect behavior remain unverified. Gameplay, controller input, and audio were not manually exercised in this bounded run.
+
 ## Architecture audit
 
 - **Entry point and startup:** `blip_n_blop_3.cpp` contains `main`. `InitApp` initializes the SDL_mixer-backed FMOD compatibility API, reads `data/bb.cfg` and `data/bb.scr`, loads localized text, initializes graphics/input, creates the 640x480 surfaces, initializes the LGX decoder, and loads fonts/interface banks. `main` calls `Game::go`, then writes high scores and configuration.
@@ -180,6 +192,8 @@ The build ideas are useful and informed this baseline, but should not be copied 
 - Completed Prompt 5 and merged the Prompt 1-5 core-modernization milestone to `main` while preserving its commit history.
 - Added standardized SDL game-controller defaults while retaining simultaneous keyboard and raw-joystick compatibility.
 - Moved config, high scores, and logs to SDL's per-user directory with conservative migration, checked legacy-format loading, and recoverable writes.
+- Added contextual keyboard, mapped-controller, and raw-joystick prompts to existing menu and briefing UI locations.
+- Expanded the modernization README with current display, input, persistence, standalone-runtime, and robustness behavior while preserving the original README.
 
 ## Known problems
 
@@ -195,8 +209,8 @@ The build ideas are useful and informed this baseline, but should not be copied 
 
 ## Current task
 
-Prompt 6 is complete: standardized controller support, per-user writable state, compatibility migration, guarded persistence, Debug/Release builds, and the refreshed deployed runtime have been verified to the extent possible without a recognized physical game controller.
+Prompt 7 is complete: contextual input prompts and the comprehensive modernization README have been implemented and verified to the extent possible without a recognized physical game controller.
 
 ## Next task
 
-Prompt 7 is the packaging/CI and controller-prompt work described in `IMPLEMENTATION_PLAN.md`. It has not been started.
+Prompt 8 has not been started. It remains reserved for the full compatibility and release-verification pass described in `IMPLEMENTATION_PLAN.md`.

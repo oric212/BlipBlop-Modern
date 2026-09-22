@@ -8,6 +8,7 @@
 class MenuList {
    public:
     void Draw(SDL::Surface* surf) const;
+    void ShowConfirmPrompt(bool show) { show_confirm_prompt_ = show; }
 
     void MoveUp() {
         focused_ -= 1;
@@ -36,4 +37,5 @@ class MenuList {
 
     std::vector<std::string> items_;
     int focused_ = 0;
+    bool show_confirm_prompt_ = true;
 };

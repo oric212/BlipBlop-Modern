@@ -6,11 +6,51 @@ This repository builds upon the original Blip'n Blop source code and the work of
 
 See [PROG.md](PROG.md) for the current verified status and [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the staged modernization roadmap.
 
-## Modern controller defaults
+## Modernization approach
 
-Recognized SDL game controllers work alongside the original keyboard controls. For each player, the D-pad or left stick moves, X fires, A jumps, and B uses the super attack. Player 1 can also use A to confirm menu selections and Start to pause. The first two recognized controllers are assigned to players 1 and 2; unsupported devices retain the legacy raw-joystick path.
+This remains the original game rather than a remake. Gameplay runs in its original 640x480 coordinate system with the original assets, levels, physics, timing, and rules. The modernization is concentrated in the Windows build, SDL platform layer, display presentation, resource loading, input, audio compatibility, and safe persistence.
 
-Configuration, high scores, and `BlipBlop.log` are stored in SDL's per-user preference directory (`%APPDATA%\BlipBlopModern\BlipnBlop\` on Windows). On first use, existing `data/bb.cfg` and `data/bb.scr` files are copied forward when present.
+## Windows build and standalone runtime
+
+The current target is a native x64 Windows application built with Visual Studio 2022, CMake, SDL2, and SDL2_mixer. Build configuration and dependency versions are recorded in the repository's CMake files and `vcpkg.json`. The executable embeds a multi-resolution icon cropped from the original Blip and Blop menu artwork. The CMake `deploy` target assembles the ignored `game-build/` directory with `BlipnBlop.exe`, the original `data/` tree, and only the SDL, codec, and MSVC runtime DLLs the game needs. This folder can be moved and launched normally without a source-tree working directory or development tools; it is the working distribution layout, not yet a final release archive.
+
+Verified local build and deployment commands are maintained in [PROG.md](PROG.md).
+
+## Modern display support
+
+The game still renders one complete 640x480 frame. The presentation layer scales that final frame to the largest centered 4:3 rectangle that fits the actual drawable area, with black pillarboxing or letterboxing where necessary. It does not expand the visible world or convert individual artwork and gameplay coordinates to the desktop resolution.
+
+Nearest-neighbor sampling keeps the original pixel-art character instead of smoothing it. Scaling is allowed to be fractional so 4:3 uses as much of the display as possible. For example, a 3840x2160 (4K) display presents the game as 2880x2160 at 4.5x, centered with 480-pixel black bars on the left and right. This preserves the original assumptions and composition, works automatically at modern resolutions, and avoids rewriting the UI, camera, gameplay coordinates, or artwork. It does not create additional graphical detail, fractional nearest-neighbor output is not pixel-perfect integer scaling, and widescreen displays retain unused side space. Strict integer scaling is not currently offered.
+
+The window is resizable and high-DPI aware. Fullscreen uses borderless desktop fullscreen and returns to the saved windowed size and position. These presentation changes do not alter the 640x480 simulation or gameplay timing.
+
+## Keyboard and controller input
+
+The original keyboard controls remain active and configurable. Recognized SDL game controllers work at the same time, so players can switch between devices without restarting:
+
+| Action | Controller input |
+| --- | --- |
+| Move | D-pad or left stick |
+| Fire | X |
+| Jump / menu confirm (player 1) | A |
+| Super attack | B |
+| Pause | Start (player 1) |
+
+The first two recognized controllers are assigned to players 1 and 2. Hot-plug and removal are handled by SDL, and devices that are not in SDL's controller mapping database retain the legacy raw-joystick path. Analog sticks intentionally produce the same digital movement states as the keyboard; they do not change acceleration, physics, or movement speed.
+
+Menus show a compact prompt beside the current selection and switch between keyboard, mapped-controller, and raw-joystick wording according to the most recently used device. The level briefing uses the same device context for its existing start prompt. Small stick drift is filtered for prompt switching without changing the original gameplay movement dead zone. The key-remapping screen omits the confirm hint because it waits for a key rather than the normal menu-confirm action.
+
+## Configuration and writable data
+
+Configuration, high scores, and `BlipBlop.log` are stored in SDL's per-user preference directory (`%APPDATA%\BlipBlopModern\BlipnBlop\` on Windows). On first use, existing `data/bb.cfg` and `data/bb.scr` files are copied forward when present, but existing per-user files are never overwritten by migration. The original binary formats and semantics remain compatible; malformed files fall back to defaults, and successful saves use a temporary file followed by replacement to reduce the risk of losing the previous file during an interrupted write.
+
+Runtime assets remain read-only in the executable-relative `data/` directory. Startup reports useful paths for missing resources and retains a source-tree working-directory fallback for development builds.
+
+## Compatibility and robustness
+
+The modernization includes pitch- and pixel-format-safe image decoding, centered aspect-correct SDL rendering, checked controller/joystick lifetime handling, focus-loss input cleanup, and stricter SDL2_mixer initialization, codec checks, and resource-error handling. Original padded MP3 assets are supported without modifying the shipped files. Cleanup and error reporting have been strengthened around initialization and normal shutdown.
+
+Verification is deliberately reported conservatively in [PROG.md](PROG.md). Successful compilation or a bounded launch is not treated as proof of untested gameplay, controller hardware, audio output, or Windows shell behavior.
 
 ---
 

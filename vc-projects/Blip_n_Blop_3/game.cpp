@@ -435,7 +435,14 @@ bool Game::joueNiveau(const char* nom_niveau, int type) {
         backSurface->FillRect(&r, 0);
 
         pbk_briefing[0]->PasteTo(backSurface, 0, 0);
-        fnt_rpg.printC(backSurface, 320, 460, "Press a key to start.");
+        const InputDevice briefing_device = in.lastInputDevice();
+        const char* briefing_prompt =
+            briefing_device == InputDevice::GameController
+                ? "PRESS [A] TO START."
+                : (briefing_device == InputDevice::RawJoystick
+                       ? "PRESS A BUTTON TO START."
+                       : "PRESS A KEY TO START.");
+        fnt_rpg.printC(backSurface, 320, 460, briefing_prompt);
         DDFlip();
 
         mbk_inter.play(2);

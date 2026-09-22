@@ -179,7 +179,8 @@ struct DIJOYSTATE
 
 enum class InputDevice {
 	Keyboard,
-	Controller
+	GameController,
+	RawJoystick
 };
 
 extern bool app_killed;
