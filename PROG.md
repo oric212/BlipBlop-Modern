@@ -130,6 +130,18 @@ VS2022 x64 Debug and Release builds both succeeded, and the Release `deploy` tar
 
 The native 640x480 title menu was captured during development and visually inspected: the keyboard `ENTER` prompt was legible within the existing shaded selection area and did not overlap the focused label, title art, characters, or other menu entries. The capture-only instrumentation and image were removed before the final builds. No prompt was added to the gameplay HUD or character-selection artwork because there was no existing unobtrusive hint location. Code inspection verified mapped-controller and raw-joystick prompt selection, but no SDL-recognized physical controller was available, so live controller prompt switching, mappings, and reconnect behavior remain unverified. Gameplay, controller input, and audio were not manually exercised in this bounded run.
 
+## Prompt 8 focused stability and safety audit
+
+The audit used targeted source searches for manual allocation, unchecked C-string operations, binary reads, and SDL/audio ownership; a full MSVC `/analyze` Debug rebuild with the Native Recommended Rules; a separate MSVC AddressSanitizer RelWithDebInfo build; and normal Debug/Release builds plus bounded runtime checks. Runtime paths, config/high-score validation and replacement writes, controller/joystick lifetime handling, audio ownership, GFX/SFX/font/level loaders, cinematic parsing, and standalone DLL deployment were inspected. This was a focused audit, not a claim that the entire legacy codebase is memory-safe.
+
+Three concrete unsafe-input defects were fixed. Startup previously concatenated arbitrary command-line arguments into a fixed 512-byte stack buffer; switches are now examined directly from `argv`. The cinematic command reader could overrun its command name, argument count, and per-argument buffers and passed signed `char` values to `tolower`; it now rejects overlong lines, commands, argument lists, and arguments before copying and performs defined character conversion. `PictureBank` previously trusted signed picture/blob sizes, allocated from unchecked values, decoded truncated reads, partially replaced the active bank on failure, and released live restore surfaces before a replacement was validated. It now bounds counts against the file, rejects non-positive or overlong entries, uses owned byte buffers, commits a newly loaded bank only after complete success, verifies restore counts, and validates replacement surfaces before releasing old ones.
+
+MSVC `/analyze` completed with 255 warnings and no errors. Most were broad uninitialized-member reports in legacy gameplay/entity classes, plus four third-party SDL fallthrough warnings; they were not mechanically changed because many objects receive fields through level/event construction and speculative initialization could alter behavior. Notable findings left for evidence-driven follow-up include a no-op video-buffer fallback loop, a dormant precache implementation that mistakes `fseek`'s return value for a length, two possible uninitialized laser coordinates, and loaders whose inner LGX/font/level structures still lack complete source-length validation. The normal compiler emitted no warnings from the changed files.
+
+The separate x64 AddressSanitizer target compiled and linked successfully. ASan initialized, and a corrected hidden run remained alive for 15 seconds without an observed sanitizer termination; the harness then stopped it. This limited startup exercise did not reach gameplay and is not proof of leak freedom. No confirmed resource leak was found or claimed, and repeated level/death/pause/controller/audio-transition stress was not practical without reliable gameplay automation. The standalone DLL set remains the intentional SDL2, SDL2_mixer, five codec DLLs, and three MSVC runtime DLLs documented above; no new dependency or loading behavior was introduced.
+
+Final VS2022 x64 Debug and Release builds succeeded, and `deploy` refreshed `game-build/`. A deployed run from an unrelated `%TEMP%` working directory remained alive for 20 seconds, accepted a normal close, exited with code 0, and wrote config and score files to an isolated user-data directory. The deployed and Release executables had the same SHA-256 hash (`89E96F6073605F48BFFFC7E21994C44DEA002E9AC527EF327F4A1AD98144BD20`). Audio/render/input initialization completed far enough for the process to remain stable, but output was not manually observed; no mapped physical controller was available.
+
 ## Architecture audit
 
 - **Entry point and startup:** `blip_n_blop_3.cpp` contains `main`. `InitApp` initializes the SDL_mixer-backed FMOD compatibility API, reads `data/bb.cfg` and `data/bb.scr`, loads localized text, initializes graphics/input, creates the 640x480 surfaces, initializes the LGX decoder, and loads fonts/interface banks. `main` calls `Game::go`, then writes high scores and configuration.
@@ -209,8 +221,8 @@ The build ideas are useful and informed this baseline, but should not be copied 
 
 ## Current task
 
-Prompt 7 is complete: contextual input prompts and the comprehensive modernization README have been implemented and verified to the extent possible without a recognized physical game controller.
+Prompt 8 is complete: the focused safety audit fixed confirmed command-line, cinematic-parser, and picture-bank validation/lifetime defects and recorded the remaining analyzer findings and verification limits.
 
 ## Next task
 
-Prompt 8 has not been started. It remains reserved for the full compatibility and release-verification pass described in `IMPLEMENTATION_PLAN.md`.
+Prompt 9 has not been started. Final packaging/release work remains deferred.

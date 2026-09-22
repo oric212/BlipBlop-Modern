@@ -474,12 +474,16 @@ bool CINEPlayer::getCommand()
 
 	// Esquive les lignes commentées et les lignes vides
 	//
-	fic_.getline(buffer, BUFFER_SIZE);
+	fic_.getline(buffer, sizeof(buffer));
 	num_ligne += 1;
+	if (fic_.fail() && !fic_.eof())
+		return error("Line is too long");
 
 	while (!fic_.eof() && (buffer[0] == ';' || buffer[0] == '\0')) {
-		fic_.getline(buffer, BUFFER_SIZE);
+		fic_.getline(buffer, sizeof(buffer));
 		num_ligne += 1;
+		if (fic_.fail() && !fic_.eof())
+			return error("Line is too long");
 	}
 
 	if (fic_.eof() && strlen(buffer) == 0)
@@ -497,7 +501,10 @@ bool CINEPlayer::getCommand()
 		if (c == ';') {
 			buffer2[j] = '\0';
 		} else if (c != ' ' && c != '\"') {	// Ignore les espaces
-			buffer2[j++] = tolower(c);
+			if (j >= BUFFER_SIZE)
+				return error("Command is too long");
+			buffer2[j++] = static_cast<char>(
+			    tolower(static_cast<unsigned char>(c)));
 		}
 
 	} while (c != '\0' && c != ';');
@@ -515,6 +522,8 @@ bool CINEPlayer::getCommand()
 
 
 	pos[0] = '\0';
+	if (strlen(buffer2) >= sizeof(cmd_name))
+		return error("Command name is too long");
 	strcpy(cmd_name, buffer2);
 	arg = pos + 1;
 
@@ -531,6 +540,10 @@ bool CINEPlayer::getCommand()
 	arg = strtok(arg, seps);
 
 	while (arg != NULL) {
+		if (nb_args >= NB_ARG)
+			return error("Too many arguments");
+		if (strlen(arg) >= STR_LENGTH)
+			return error("Argument is too long");
 		strcpy(str_arg[nb_args], arg);
 		int_arg[nb_args] = atoi(arg);
 

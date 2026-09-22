@@ -127,13 +127,9 @@ long WINAPI WinProc(HWND WinHandle, UINT Msg, WPARAM wParam, LPARAM lParam) {
 }
 #endif
 
-static void analyseCmdLine(char* cmd) {
-    static const char sep[] = " ";
-    char* token;
-
-    token = strtok(cmd, sep);
-
-    while (token != NULL) {
+static void analyseCmdLine(int argc, char* argv[]) {
+    for (int i = 1; i < argc; ++i) {
+        const char* token = argv[i];
         if (strcmp(token, "/safe") == 0) {
             safeMode = true;
         }
@@ -145,8 +141,6 @@ static void analyseCmdLine(char* cmd) {
         if (strcmp(token, "/quiet") == 0) {
             music_on = false;
         }
-
-        token = strtok(NULL, sep);
     }
 }
 
@@ -527,18 +521,13 @@ int main(int argc, char** argv) {
           << "\nHigh-scores file: " << high_scores_path
           << "\nLog file: " << log_path << "\n" << std::flush;
 
-    char lpCmdLine[512] = {0};
-    for (int i = 1; i < argc; i++) {
-        strcat(lpCmdLine, argv[i]);
-        strcat(lpCmdLine, " ");
-    }
     int nCmdShow = 0;
 
     //------------------------------------------------------------------
     //                      Safe mode ?
     //------------------------------------------------------------------
 
-    analyseCmdLine(lpCmdLine);
+    analyseCmdLine(argc, argv);
 
     //------------------------------------------------------------------
     //                      Initialise l'application

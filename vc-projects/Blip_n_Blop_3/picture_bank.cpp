@@ -1,85 +1,99 @@
-/******************************************************************
- *
- *
- *		------------------
- *		  PictureBank.cpp
- *		------------------
- *
- *		Classe PictureBank
- *
- *		Représente un tableau/une banque d'images.
- *
- *
- *		Prosper / LOADED -   V 0.2 - 13 Juillet 2000
- *
- *
- *
- ******************************************************************/
-
 #include "picture_bank.h"
 
 #include <fstream>
+#include <vector>
 
-#include <stdio.h>
-#include <string.h>
 #include "ben_debug.h"
 #include "dd_gfx.h"
 #include "lgx_packer.h"
 
-PictureBank::PictureBank() : flag_fic(0) {}
+namespace {
+
+bool readInt(std::ifstream& file, int& value) {
+    return static_cast<bool>(
+        file.read(reinterpret_cast<char*>(&value), sizeof(value)));
+}
+
+std::streamoff remainingBytes(std::ifstream& file) {
+    const std::streampos current = file.tellg();
+    if (current < 0) return -1;
+    file.seekg(0, std::ios::end);
+    const std::streampos end = file.tellg();
+    file.seekg(current);
+    return end >= current ? end - current : -1;
+}
+
+bool readEntry(std::ifstream& file, int& xspot, int& yspot,
+               std::vector<char>& bytes) {
+    int size = 0;
+    if (!readInt(file, xspot) || !readInt(file, yspot) ||
+        !readInt(file, size) || size <= 0) {
+        return false;
+    }
+    const std::streamoff remaining = remainingBytes(file);
+    if (remaining < 0 || static_cast<std::streamoff>(size) > remaining)
+        return false;
+
+    bytes.resize(static_cast<size_t>(size));
+    return static_cast<bool>(file.read(bytes.data(), size));
+}
+
+}  // namespace
+
+PictureBank::PictureBank() : flag_fic(0), trans_fic(false) {}
 
 bool PictureBank::loadGFX(const char* file, int flag, bool trans) {
-    SDL::Surface* surf;
-    int xspot;
-    int yspot;
-    int version;
+    std::ifstream input(file, std::ios::binary);
+    if (!input) {
+        debug << "PictureBank::loadGFX() - cannot open " << file << "\n";
+        return false;
+    }
 
-    std::ifstream fic(file, std::ios::binary);
-    if (!fic.good()) {
-        debug << "PictureBank::loadGFX() - Impossible de charger le fichier "
+    int picture_count = 0;
+    if (!readInt(input, picture_count) || picture_count < 0) {
+        debug << "PictureBank::loadGFX() - invalid picture count in " << file
+              << "\n";
+        return false;
+    }
+    const std::streamoff remaining = remainingBytes(input);
+    if (remaining < 0 || static_cast<std::streamoff>(picture_count) >
+                             remaining / (3 * sizeof(int))) {
+        debug << "PictureBank::loadGFX() - impossible picture count in "
               << file << "\n";
         return false;
     }
 
-    int nb_pic;
-    fic.read(reinterpret_cast<char*>(&nb_pic), sizeof(nb_pic));
-    tab_.resize(nb_pic);
-
-    for (int i = 0; i < nb_pic; i++) {
-        int size;
-        // Coordonnées du point chaud
-        fic.read(reinterpret_cast<char*>(&xspot), sizeof(xspot));
-        fic.read(reinterpret_cast<char*>(&yspot), sizeof(yspot));
-
-        fic.read(reinterpret_cast<char*>(&size), sizeof(size));
-
-        void* ptr;
-        ptr = malloc(size);
-
-        fic.read(static_cast<char*>(ptr), size);
-        surf = LGXpaker.loadLGX(ptr, flag, &version);
-
-        free(ptr);
-
-        if (surf == NULL) {
-            debug << "PictureBank::loadGFX() - surface à NULL\n";
+    std::vector<std::unique_ptr<Picture>> loaded;
+    loaded.reserve(static_cast<size_t>(picture_count));
+    for (int index = 0; index < picture_count; ++index) {
+        int xspot = 0;
+        int yspot = 0;
+        int version = 0;
+        std::vector<char> bytes;
+        if (!readEntry(input, xspot, yspot, bytes)) {
+            debug << "PictureBank::loadGFX() - invalid/truncated entry "
+                  << index << " in " << file << "\n";
             return false;
         }
 
-        tab_[i] = std::make_unique<Picture>();
-
-        tab_[i]->SetSpot(xspot, yspot);
-        tab_[i]->SetSurface(surf);
-
-        if (trans) {
-            if (version == 1) {
-                tab_[i]->SetColorKey(RGB(246, 205, 148));
-            } else {
-                tab_[i]->SetColorKey(RGB(246, 210, 148));
-            }
+        SDL::Surface* surface = LGXpaker.loadLGX(bytes.data(), flag, &version);
+        if (surface == nullptr) {
+            debug << "PictureBank::loadGFX() - cannot decode entry " << index
+                  << " in " << file << "\n";
+            return false;
         }
+
+        auto picture = std::make_unique<Picture>();
+        picture->SetSpot(xspot, yspot);
+        picture->SetSurface(surface);
+        if (trans) {
+            picture->SetColorKey(version == 1 ? RGB(246, 205, 148)
+                                               : RGB(246, 210, 148));
+        }
+        loaded.push_back(std::move(picture));
     }
 
+    tab_ = std::move(loaded);
     filename_ = file;
     flag_fic = flag;
     trans_fic = trans;
@@ -87,67 +101,50 @@ bool PictureBank::loadGFX(const char* file, int flag, bool trans) {
 }
 
 bool PictureBank::restoreAll() {
-    if (filename_.empty()) {
-        return true;
-    }
-    SDL::Surface* surf;
-    int xspot;
-    int yspot;
-    int taille;
-    int version;
-    void* ptr;
+    if (filename_.empty()) return true;
 
-    std::ifstream fic(filename_.c_str(), std::ios::binary);
-    if (!fic.good()) {
-        debug << "PictureBank::restoreAll() - Impossible de charger le "
-                 "fichier "
+    std::ifstream input(filename_, std::ios::binary);
+    if (!input) {
+        debug << "PictureBank::restoreAll() - cannot open " << filename_
+              << "\n";
+        return false;
+    }
+
+    int picture_count = 0;
+    if (!readInt(input, picture_count) || picture_count < 0 ||
+        static_cast<size_t>(picture_count) != tab_.size()) {
+        debug << "PictureBank::restoreAll() - invalid picture count in "
               << filename_ << "\n";
         return false;
     }
 
-    int nb_pic;
-    fic.read(reinterpret_cast<char*>(&nb_pic), sizeof(nb_pic));
-
-    for (int i = 0; i < nb_pic; i++) {
-        // Libère l'ancienne surface
-        //
-        surf = tab_[i]->Surf();
-        surf->Release();
-
-        fic.read(reinterpret_cast<char*>(&xspot),
-                 sizeof(xspot));  // Coordonnées du point chaud
-        fic.read(reinterpret_cast<char*>(&yspot), sizeof(yspot));
-
-        fic.read(reinterpret_cast<char*>(&taille), sizeof(taille));
-
-        ptr = malloc(taille);
-
-        if (ptr == NULL) {
-            debug << "PictureBank::restoreAll() - Impossible d'allouer "
-                  << taille << " octets \n";
+    for (int index = 0; index < picture_count; ++index) {
+        int xspot = 0;
+        int yspot = 0;
+        int version = 0;
+        std::vector<char> bytes;
+        if (!readEntry(input, xspot, yspot, bytes)) {
+            debug << "PictureBank::restoreAll() - invalid/truncated entry "
+                  << index << " in " << filename_ << "\n";
             return false;
         }
 
-        fic.read(reinterpret_cast<char*>(ptr), taille);
-        surf = LGXpaker.loadLGX(ptr, flag_fic, &version);
-
-        free(ptr);
-
-        if (surf == NULL) {
-            debug << "PictureBank::restoreAll() - surface à NULL\n";
+        SDL::Surface* surface =
+            LGXpaker.loadLGX(bytes.data(), flag_fic, &version);
+        if (surface == nullptr) {
+            debug << "PictureBank::restoreAll() - cannot decode entry "
+                  << index << " in " << filename_ << "\n";
             return false;
         }
 
-        tab_[i]->SetSpot(xspot, yspot);
-        tab_[i]->SetSurface(surf);
-
+        SDL::Surface* old_surface = tab_[index]->Surf();
+        old_surface->Release();
+        tab_[index]->SetSpot(xspot, yspot);
+        tab_[index]->SetSurface(surface);
         if (trans_fic) {
-            if (version == 1)
-                tab_[i]->SetColorKey(RGB(250, 206, 152));
-            else
-                tab_[i]->SetColorKey(RGB(250, 214, 152));
+            tab_[index]->SetColorKey(version == 1 ? RGB(250, 206, 152)
+                                                  : RGB(250, 214, 152));
         }
     }
-
     return true;
 }
