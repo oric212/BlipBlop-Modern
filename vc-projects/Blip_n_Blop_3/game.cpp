@@ -69,6 +69,7 @@
 #include "meteo_neige.h"
 #include "meteo_pluie.h"
 #include "restore.h"
+#include "runtime_paths.h"
 #include "scroll.h"
 #include "texte_cool.h"
 #include "tir_bb.h"
@@ -544,16 +545,19 @@ bool Game::chargeNiveau(const char* nom_niveau) {
     char buffer[20];
     char buffer2[70];
 
-    std::ifstream fic(nom_niveau, std::ios::binary);
+    const std::string resolved_level = RuntimePaths::resolveString(nom_niveau);
+    std::ifstream fic(resolved_level, std::ios::binary);
 
     if (!fic.good()) {
-        debug << "Game::chargeNiveau() -> Cannot load <" << nom_niveau << ">\n";
+        debug << "Game::chargeNiveau() -> Cannot load requested resource <"
+              << nom_niveau << ">; resolved path <" << resolved_level << ">\n";
         return false;
     }
 
     debug
         << "---------------------------------------------------------------\n";
-    debug << "Loading level <" << nom_niveau << ">\n";
+    debug << "Loading level <" << nom_niveau << "> from <" << resolved_level
+          << ">\n";
     debug
         << "---------------------------------------------------------------\n";
 
@@ -563,7 +567,8 @@ bool Game::chargeNiveau(const char* nom_niveau) {
     strcpy(buffer2, "data/");
     strcat(buffer2, buffer);
 
-    if (!pbk_decor.loadGFX(buffer2, DDSURF_SYSTEM)) {
+    std::string resolved_resource = RuntimePaths::resolveString(buffer2);
+    if (!pbk_decor.loadGFX(resolved_resource.c_str(), DDSURF_SYSTEM)) {
         debug << "Game::chargeNiveau() -> Cannot load " << buffer2
               << " as background\n";
         return false;
@@ -578,7 +583,8 @@ bool Game::chargeNiveau(const char* nom_niveau) {
         strcpy(buffer2, "data/");
         strcat(buffer2, buffer);
 
-        if (!pbk_niveau.loadGFX(buffer2, mem_flag)) {
+        resolved_resource = RuntimePaths::resolveString(buffer2);
+        if (!pbk_niveau.loadGFX(resolved_resource.c_str(), mem_flag)) {
             debug << "Game::chargeNiveau() -> Cannot load " << buffer2
                   << " as level stuff\n";
             return false;
@@ -594,7 +600,8 @@ bool Game::chargeNiveau(const char* nom_niveau) {
         strcpy(buffer2, "data/");
         strcat(buffer2, buffer);
 
-        if (!pbk_ennemis.loadGFX(buffer2, mem_flag)) {
+        resolved_resource = RuntimePaths::resolveString(buffer2);
+        if (!pbk_ennemis.loadGFX(resolved_resource.c_str(), mem_flag)) {
             debug << "Game::chargeNiveau() -> Cannot load " << buffer2
                   << " as ennemies\n";
             return false;
@@ -611,7 +618,8 @@ bool Game::chargeNiveau(const char* nom_niveau) {
         strcpy(buffer2, "data/");
         strcat(buffer2, buffer);
 
-        if (!sbk_niveau.loadSFX(buffer2)) {
+        resolved_resource = RuntimePaths::resolveString(buffer2);
+        if (!sbk_niveau.loadSFX(resolved_resource.c_str())) {
             debug << "Game::chargeNiveau() -> Cannot load " << buffer2
                   << " as SBK\n";
             return false;
@@ -629,7 +637,8 @@ bool Game::chargeNiveau(const char* nom_niveau) {
         strcpy(current_mbk, buffer2);
 
         if (music_on) {
-            if (!mbk_niveau.open(buffer2)) {
+            resolved_resource = RuntimePaths::resolveString(buffer2);
+            if (!mbk_niveau.open(resolved_resource.c_str())) {
                 debug << "Game::chargeNiveau() -> Cannot load " << buffer2
                       << " as MKB\n";
                 return false;
@@ -645,11 +654,12 @@ bool Game::chargeNiveau(const char* nom_niveau) {
     if (strlen(buffer) != 0) {
         strcpy(buffer2, "data/");
         strcat(buffer2, buffer);
-        rpg.attachFile(buffer2);
+        resolved_resource = RuntimePaths::resolveString(buffer2);
+        rpg.attachFile(resolved_resource.c_str());
 
         // Precache le fichier RPG
         //
-        Precache(buffer2);
+        Precache(resolved_resource.c_str());
 
         debug << "Successfully loaded <" << buffer2 << "> as RPG file\n";
     }
@@ -661,7 +671,8 @@ bool Game::chargeNiveau(const char* nom_niveau) {
         strcpy(buffer2, "data/");
         strcat(buffer2, buffer);
 
-        if (!pbk_rpg.loadGFX(buffer2, mem_flag)) {
+        resolved_resource = RuntimePaths::resolveString(buffer2);
+        if (!pbk_rpg.loadGFX(resolved_resource.c_str(), mem_flag)) {
             debug << "Game::chargeNiveau() -> Cannot load " << buffer2
                   << " as RPG GFX\n";
             return false;
@@ -2390,10 +2401,12 @@ bool Game::loadList(const char* fic) {
     std::ifstream f;
     int n;
 
-    f.open(fic);
+    const std::string resolved_list = RuntimePaths::resolveString(fic);
+    f.open(resolved_list);
 
     if (f.is_open() == 0) {
-        debug << "Cannot open " << fic << "\n";
+        debug << "Cannot open requested level list " << fic
+              << "; resolved path " << resolved_list << "\n";
         return false;
     }
 
@@ -2412,10 +2425,18 @@ bool Game::loadList(const char* fic) {
         if (n == PART_CINE || n == PART_BRIEFING) {
             f.getline(fic_names[nb_part], 200, '*');
             f.getline(fic_names[nb_part], 200);
+            std::replace(fic_names[nb_part],
+                         fic_names[nb_part] + strlen(fic_names[nb_part]),
+                         '\\',
+                         '/');
         } else {
             f >> type_lvl[nb_part];
             f.getline(fic_names[nb_part], 200, '*');
             f.getline(fic_names[nb_part], 200);
+            std::replace(fic_names[nb_part],
+                         fic_names[nb_part] + strlen(fic_names[nb_part]),
+                         '\\',
+                         '/');
         }
 
         nb_part += 1;

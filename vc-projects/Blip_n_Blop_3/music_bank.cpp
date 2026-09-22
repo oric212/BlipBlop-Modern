@@ -9,6 +9,7 @@
 #include "ben_debug.h"
 #include "config.h"
 #include "fmod__errors.h"
+#include "runtime_paths.h"
 
 #define TYPE_MOD 0
 #define TYPE_MP3 1
@@ -41,7 +42,7 @@ bool MusicBank::open(const char* file, bool loop) {
         f >> type;
         std::string fname;
         f >> fname;
-        std::replace(fname.begin(), fname.end(), '\\', '/');
+        fname = RuntimePaths::resolveString(fname);
 
         if (type == TYPE_MOD) {
             musics_[i].reset(new ModMusic(fname));

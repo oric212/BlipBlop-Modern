@@ -11,17 +11,58 @@ git clone --depth 1 https://github.com/microsoft/vcpkg.git out/vcpkg
 cmd.exe /c out\vcpkg\bootstrap-vcpkg.bat -disableMetrics
 & 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' -S . -B out/build-vs2022 -G 'Visual Studio 17 2022' -A x64 -DCMAKE_TOOLCHAIN_FILE='D:/Cs/C++/Home Projects/blip-blop/out/vcpkg/scripts/buildsystems/vcpkg.cmake'
 & 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' --build out/build-vs2022 --config Release --parallel 4
+& 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' --build out/build-vs2022 --config Release --target deploy
 ```
 
-Result: `out/build-vs2022/vc-projects/Blip_n_Blop_3/Release/blipblop.exe` and the required dependency DLLs were produced. The build emitted one warning: `pause_menu.cpp(30): C4715`, because `PauseMenu::ProcessEvent` does not return a value on every path.
+Result: `out/build-vs2022/vc-projects/Blip_n_Blop_3/Release/BlipnBlop.exe` and the required dependency DLLs were produced. A clean build still emits the known `pause_menu.cpp(30): C4715` warning because `PauseMenu::ProcessEvent` does not return a value on every path; Prompt 2 did not change that code.
 
 The Visual Studio-bundled vcpkg client was also tried. Its pinned older ports referenced a removed MSYS2 pkgconf archive, while current ports require a newer vcpkg client. A current workspace-local vcpkg checkout succeeded. Build directories are ignored and are not repository content.
 
 ## Current runtime status
 
-A bounded smoke launch was performed from `vc-projects/Blip_n_Blop_3`, where the relative `data/` directory is available. The process remained alive for eight seconds and was then stopped intentionally. This verifies that the executable starts and does not immediately crash, but the hidden, non-interactive check does **not** verify the main menu, gameplay, rendering correctness, input, audio, level loading, fullscreen, or clean shutdown.
+A bounded development smoke launch was performed from `vc-projects/Blip_n_Blop_3`. Because the build-tree executable has no adjacent `data/`, the documented legacy working-directory fallback selected the source game directory. The process remained alive for eight seconds and was then stopped intentionally.
 
-Launching from an arbitrary working directory is not yet supported because assets, configuration, high scores, and logs use relative paths.
+The deployed `game-build/BlipnBlop.exe` was also launched for eight seconds both from `game-build/` and from `%TEMP%/blipblop-prompt2-cwd`. Both processes remained alive. The unrelated-directory log recorded `game-build/` as both the application directory and executable-relative resource root, proving normal standalone startup did not use source-tree data. These hidden, non-interactive checks do **not** verify menu visibility, gameplay, rendering correctness, input, audio output, level loading, fullscreen, or clean shutdown.
+
+## Runtime resource paths
+
+`runtime_paths.cpp/.h` obtains the executable directory with `SDL_GetBasePath`, records the original working directory, and selects a runtime resource root before initialization. The lookup order is:
+
+1. executable-directory-relative logical path;
+2. original-working-directory-relative logical path as a development compatibility fallback;
+3. if neither exists, return the preferred executable-relative path so errors and writable legacy files have deterministic paths.
+
+If the executable has an adjacent `data/`, startup changes the process working directory to the executable directory. This lets untouched legacy call sites and paths embedded in scripts continue to resolve under the packaged runtime root. If executable-adjacent `data/` is absent but the original working directory has `data/`, startup selects and reports that fallback. If neither directory exists, startup stops with both attempted paths.
+
+Directly resolved call sites now cover startup config/high scores, localized text, fonts, interface graphics/music, the level list, level files and their referenced graphics/SFX/MBK/RPG resources, and filenames read from music banks. Backslashes read from level lists and music-bank metadata are normalized in memory; original data files are not changed. Other legacy `data/...` calls resolve because startup selects the resource root as the process working directory.
+
+Missing localized text now reports the logical resource and full resolved path through the log and Windows error dialog. A test temporarily made `game-build/data/uk.dat` unavailable; the log reported `data/uk.dat` resolved to the exact missing path under `game-build/data`, and the file was restored immediately.
+
+The remaining current-working-directory-dependent output is `BlipBlop.log`, whose global stream opens before `main` can initialize executable-relative paths. Moving logs and writable user data is deferred to Prompt 6. Config and high scores retain their original formats and semantics under executable-relative `data/` as required.
+
+## Local runtime deployment
+
+The CMake `deploy` target recreates the ignored `game-build/` directory from a Release build. It copies `BlipnBlop.exe`, the original 128 runtime data files, direct SDL runtime DLLs, the five transitive SDL2_mixer codec DLLs identified with `dumpbin`, and the MSVC runtime DLLs. It does not copy source, project, documentation, cache, object, or source-control files.
+
+The clean generated root contains:
+
+```text
+game-build/
+|-- BlipnBlop.exe
+|-- SDL2.dll
+|-- SDL2_mixer.dll
+|-- mpg123.dll
+|-- wavpackdll.dll
+|-- vorbisfile.dll
+|-- vorbis.dll
+|-- ogg.dll
+|-- msvcp140.dll
+|-- vcruntime140.dll
+|-- vcruntime140_1.dll
+`-- data/ (original runtime data layout)
+```
+
+`SDL2_mixer.dll` directly requires `vorbisfile.dll`, `mpg123.dll`, and `wavpackdll.dll`; Vorbis additionally requires `vorbis.dll` and `ogg.dll`. The executable's inspected imports require the three selected MSVC C++ runtime DLLs. No unrelated vcpkg or MSVC runtime DLLs are copied. Running the game may create `BlipBlop.log`; regenerating with `deploy` returns the folder to the clean distribution layout.
 
 ## Architecture audit
 
@@ -53,7 +94,7 @@ The build ideas are useful and informed this baseline, but should not be copied 
 ## Important discoveries and compatibility risks
 
 1. LGX decoding and halftone effects assume pixel sizes and sometimes surface width instead of pitch; this is the leading startup/corruption risk.
-2. All resources and writable files are current-working-directory relative, so double-click and packaged launches are fragile.
+2. Resource lookup is now executable-relative, but changing the process working directory remains a compatibility bridge for untouched legacy call sites. The pre-main log stream still opens relative to the caller's working directory.
 3. The raw binary config format serializes implementation-sized `bool`/`int` values without validation and writes into `data/`.
 4. The renderer recreates a texture every frame, lacks error propagation, and does not preserve 4:3 output on arbitrary windows/displays.
 5. Input uses legacy fixed buffers and raw joystick indexes; controller bounds and device lifecycle need auditing.
@@ -70,11 +111,16 @@ The build ideas are useful and informed this baseline, but should not be copied 
 - Performed a bounded startup smoke check.
 - Added the modernization/upstream acknowledgement while preserving the original README below it.
 - Created this status document and the staged implementation roadmap.
+- Added centralized executable-relative resource resolution with a documented development fallback.
+- Normalized historical separators from level-list and music-bank metadata without changing assets.
+- Added focused startup diagnostics for the resource root and missing localized text.
+- Added and verified the reproducible CMake `deploy` target and standalone `game-build/` layout.
+- Verified development, deployed, and unrelated-working-directory startup smoke tests.
 
 ## Known problems
 
 - Interactive runtime behavior is unverified.
-- Launch remains dependent on the working directory.
+- `BlipBlop.log` is still opened relative to the initial working directory before `main`.
 - PR #9's crash, pitch, unlock, and path fixes are not yet integrated.
 - `PauseMenu::ProcessEvent` has a missing-return warning.
 - Modern scaling, aspect-ratio handling, high-DPI behavior, and borderless fullscreen are absent.
@@ -82,8 +128,8 @@ The build ideas are useful and informed this baseline, but should not be copied 
 
 ## Current task
 
-Prompt 1 is complete: audit, modern build baseline, upstream assessment, documentation, and smoke-build verification.
+Prompt 2 is complete: executable-relative resource loading, embedded separator compatibility, focused startup diagnostics, local runtime deployment, and standalone smoke verification.
 
 ## Next task
 
-Prompt 2 is the startup and resource-loading work described in `IMPLEMENTATION_PLAN.md`. It has not been started.
+Prompt 3 is the focused x64/runtime safety work described in `IMPLEMENTATION_PLAN.md`. It has not been started.

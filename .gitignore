@@ -1,6 +1,7 @@
 # CMake and build output
 /build/
 /out/
+/game-build/
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
