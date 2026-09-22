@@ -5,7 +5,11 @@ aux_source_directory(. SRC)
 aux_source_directory(menus MENUS_SRC)
 
 if(WIN32)
-    add_executable(blipblop WIN32 ${SRC} ${MENUS_SRC})
+    add_executable(blipblop WIN32
+        ${SRC}
+        ${MENUS_SRC}
+        resources/windows/BlipnBlop.rc
+    )
 else()
     add_executable(blipblop ${SRC} ${MENUS_SRC})
 endif()

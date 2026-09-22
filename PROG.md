@@ -98,7 +98,13 @@ The input layer previously used SDL joystick instance IDs as fixed-array indexes
 
 VS2022 x64 Release built successfully. A deployed run from an unrelated `%TEMP%` directory opened the real SDL audio device at 44100 Hz, stereo, format `0x8010`; reported both MP3 and OGG codecs available; loaded all four interface-bank tracks including both padded MP3s; and reported successful looping music playback. One attached `Keychron Link` joystick was enumerated safely. The process remained stable during the bounded run. Audio was not acoustically monitored, representative in-level SFX were not reached, and the attempted deeper automated keyboard/focus test was not authorized; those interactive checks are not claimed.
 
-The authentic original game icon was not found. Repository contents, all available Git history/remote branches, historical projects, resource scripts, and the surrounding local Blip'n Blop workspace were searched. The only icons and executables found belong explicitly to the level, GFX, SFX, or font editors. None was reused, no replacement branding was invented, and executable-icon integration remains unresolved.
+## Windows executable icon
+
+The x64 Windows executable now embeds a multi-resolution icon containing 16, 32, 48, 64, 128, and 256 pixel images. It uses a native-resolution square crop of Blip and Blop from the original main-menu artwork in `data/inter.gfx`, omitting the title and menu text so the characters remain legible at shell-icon sizes; no replacement artwork or unrelated editor/fan icon was used. The lossless crop is retained as `resources/windows/BlipnBlop-source.png`, and `BlipnBlop.ico` is compiled into `BlipnBlop.exe` by `BlipnBlop.rc` through the existing CMake target.
+
+The upstream source for the original artwork is https://github.com/benkaraban/blip-blop/blob/master/vc-projects/Blip_n_Blop_3/data/inter.gfx. The 2002 LOADED Studio Windows release and its cover/screenshots were cross-checked at https://oldgamesdownload.com/game/blip-blop-balls-of-steel-m3w/ and https://gamesdb.launchbox-app.com/games/images/30130-blip-blop-balls-of-steel. Those external images were not copied into the repository.
+
+VS2022 x64 Debug and Release builds both succeeded with the resource compiler producing a 108,140-byte `BlipnBlop.res` for each configuration. Windows' `Icon.ExtractAssociatedIcon` successfully extracted the new 32x32 icon from both generated executables; the extracted PNGs had identical SHA-256 hashes and the Release extraction was visually inspected against the source artwork. The `.ico` was also inspected programmatically and contains all six intended sizes. Windows Explorer and taskbar presentation were not visually tested, so shell icon-cache behavior is not claimed.
 
 ## Architecture audit
 
@@ -170,7 +176,7 @@ The build ideas are useful and informed this baseline, but should not be copied 
 - Mouse-to-logical-coordinate conversion is not implemented; no current gameplay/menu path consumes mouse coordinates.
 - Character selection, first-level presentation, and pause overlays were not interactively verified during Prompt 4.
 - Audio playback was accepted by SDL2_mixer but was not acoustically verified; representative gameplay SFX remain untested.
-- The authentic original Windows game icon remains unavailable; editor icons were deliberately not substituted.
+- The Windows executable embeds a multi-resolution icon derived from the original main-menu Blip and Blop artwork; editor icons were deliberately not substituted.
 - There is no automated test suite or current CI workflow.
 
 ## Current task
