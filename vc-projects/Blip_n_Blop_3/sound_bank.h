@@ -41,4 +41,8 @@ class SoundBank {
 
     void reload();
     void reinit();
+    void close() {
+        tab_.clear();
+        filename_.clear();
+    }
 };

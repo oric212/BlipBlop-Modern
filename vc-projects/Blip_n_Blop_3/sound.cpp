@@ -35,7 +35,7 @@
 //		Constructeur
 //-----------------------------------------------------------------------------
 
-Sound::Sound() : sample(NULL), channel(-1)
+Sound::Sound() : sample(NULL), channel(-1), cpt_loop(0)
 {
 }
 
@@ -57,6 +57,7 @@ Sound::~Sound()
 
 bool Sound::load(const char * fic)
 {
+	close();
 	sample = FSOUND_Sample_Load(FSOUND_FREE, fic, FSOUND_LOOP_OFF, 0);
 
 	if (sample == NULL)
@@ -73,6 +74,7 @@ bool Sound::load(const char * fic)
 
 bool Sound::loadFromMem(void * ptr, int taille)
 {
+	close();
 	sample = FSOUND_Sample_Load(FSOUND_FREE, (char*)ptr, FSOUND_LOADMEMORY | FSOUND_LOOP_OFF, taille);
 
 	if (sample == NULL) {
@@ -94,6 +96,9 @@ bool Sound::loadFromMem(void * ptr, int taille)
 
 void Sound::play(int flags)
 {
+	if (sample == NULL)
+		return;
+
 	if (flags & SOUND_LOOP) {
 		FSOUND_Sample_SetLoopMode(sample, FSOUND_LOOP_NORMAL);
 
@@ -143,7 +148,13 @@ void Sound::stop()
 
 void Sound::close()
 {
-	FSOUND_Sample_Free(sample);
+	if (sample != NULL) {
+		stop();
+		FSOUND_Sample_Free(sample);
+		sample = NULL;
+	}
+	channel = -1;
+	cpt_loop = 0;
 }
 
 

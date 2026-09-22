@@ -88,6 +88,18 @@ VS2022 x64 Release built successfully and the deploy target regenerated `game-bu
 
 A bounded visual run skipped the intro and reached the main menu. Captures showed coherent intro/menu artwork and black side bars without obvious stretching or corruption. The fullscreen option entered borderless fullscreen and returned to the saved 1280x720 window client size without crashing. The process remained alive throughout and was stopped by the test harness. Character selection, the first level, multi-monitor movement, changing monitor DPI while running, and mouse-coordinate translation were not interactively tested; current gameplay menus do not consume mouse coordinates.
 
+## Prompt 5 audio and input compatibility
+
+The SDL2_mixer compatibility layer previously never detected missing codecs because its initialization expression tested the wrong mask with incorrect operator precedence. It also returned non-null wrappers after failed WAV/music loads, leaked stream wrappers, ignored stream loop flags, and used an assignment in the sample-loop test. Codec initialization now explicitly requires and reports the MP3 and OGG decoders used by the shipped data, reports the negotiated audio format, propagates load/play failures, preserves intended looping, and releases streams, samples, channels, banks, the mixer, SDL input devices, surfaces, and the graphics object in dependency order.
+
+`gameover.zik` and `tambour.zik` contain 417 zero-padding bytes before valid MP3 frames. SDL2_mixer rejected these original files from offset zero. The compatibility loader now skips only leading zero padding when opening music; the files and bank formats remain unchanged. Music-bank and SFX-bank loading now validate reads, reject invalid entries, retain the old bank on a failed replacement, and log successful resource counts. The legacy volume entry points have no callers in the shipped game and remain behaviorally unchanged rather than guessing a new attenuation mapping.
+
+The input layer previously used SDL joystick instance IDs as fixed-array indexes, wrote buttons without bounds checks, opened more than `MAX_JOY`, duplicated devices when queued add events followed startup enumeration, never closed devices, and used a precedence-broken joystick-key test. Keyboard handling could index before the key buffer for negative keycodes, and its special-key buffer was one byte smaller than its mask allowed. Input now maps instance IDs to bounded legacy slots, safely opens/closes and hot-plugs devices, validates buttons and aliases, clears all held state on focus loss, closes devices at shutdown, and exits blocking key waits when the application is closing. Original aliases, dead zone, mappings, and gameplay polling semantics are unchanged.
+
+VS2022 x64 Release built successfully. A deployed run from an unrelated `%TEMP%` directory opened the real SDL audio device at 44100 Hz, stereo, format `0x8010`; reported both MP3 and OGG codecs available; loaded all four interface-bank tracks including both padded MP3s; and reported successful looping music playback. One attached `Keychron Link` joystick was enumerated safely. The process remained stable during the bounded run. Audio was not acoustically monitored, representative in-level SFX were not reached, and the attempted deeper automated keyboard/focus test was not authorized; those interactive checks are not claimed.
+
+The authentic original game icon was not found. Repository contents, all available Git history/remote branches, historical projects, resource scripts, and the surrounding local Blip'n Blop workspace were searched. The only icons and executables found belong explicitly to the level, GFX, SFX, or font editors. None was reused, no replacement branding was invented, and executable-icon integration remains unresolved.
+
 ## Architecture audit
 
 - **Entry point and startup:** `blip_n_blop_3.cpp` contains `main`. `InitApp` initializes the SDL_mixer-backed FMOD compatibility API, reads `data/bb.cfg` and `data/bb.scr`, loads localized text, initializes graphics/input, creates the 640x480 surfaces, initializes the LGX decoder, and loads fonts/interface banks. `main` calls `Game::go`, then writes high scores and configuration.
@@ -124,7 +136,7 @@ The build ideas are useful and informed this baseline, but should not be copied 
 5. Input uses legacy fixed buffers and raw joystick indexes; controller bounds and device lifecycle need auditing.
 6. The fixed-step regulator is gameplay-critical. Modernization must not change its effective timing without before/after behavioral measurement.
 7. Numerous fixed-size buffers, C string operations, binary reads, global ownership patterns, and unchecked file contents create x64/runtime risks.
-8. Cleanup is incomplete: `ReleaseAll` exists but is not called by `main`, and SDL/mixer/window ownership needs a focused audit.
+8. Cleanup now runs from normal shutdown and initialization failure, but clean interactive exit and teardown still need broader runtime verification.
 
 ## Completed work
 
@@ -145,6 +157,9 @@ The build ideas are useful and informed this baseline, but should not be copied 
 - Verified x64 Release and Debug builds plus a 20-second deployed-runtime visual smoke test.
 - Added reusable-texture presentation with centered 4:3 scaling, resizable high-DPI windows, and desktop fullscreen switching.
 - Verified a 4K fullscreen drawable, representative window resizes, main-menu presentation, and fullscreen round-trip in the deployed build.
+- Hardened SDL2_mixer initialization, legacy padded-MP3 loading, music/SFX bank validation, loop semantics, ownership, and shutdown.
+- Hardened keyboard focus handling and bounded legacy joystick enumeration, event mapping, hot-plug, and cleanup without changing mappings.
+- Completed Prompt 5 and merged the Prompt 1-5 core-modernization milestone to `main` while preserving its commit history.
 
 ## Known problems
 
@@ -154,12 +169,14 @@ The build ideas are useful and informed this baseline, but should not be copied 
 - Multi-monitor behavior and moving a live window between monitors with different DPI settings remain unverified.
 - Mouse-to-logical-coordinate conversion is not implemented; no current gameplay/menu path consumes mouse coordinates.
 - Character selection, first-level presentation, and pause overlays were not interactively verified during Prompt 4.
+- Audio playback was accepted by SDL2_mixer but was not acoustically verified; representative gameplay SFX remain untested.
+- The authentic original Windows game icon remains unavailable; editor icons were deliberately not substituted.
 - There is no automated test suite or current CI workflow.
 
 ## Current task
 
-Prompt 4 is complete: the 640x480 logical frame is presented through a reusable SDL texture with centered aspect-correct scaling, resizable/high-DPI windows, and fullscreen-desktop switching.
+Prompt 5 is complete: audio/resource ownership and legacy input safety are hardened, standalone startup is verified, and the core Prompt 1-5 milestone is merged to `main`.
 
 ## Next task
 
-Prompt 5 is the focused audio and input modernization work described in `IMPLEMENTATION_PLAN.md`. It has not been started.
+Prompt 6 is the controller/remapping and configuration modernization work described in `IMPLEMENTATION_PLAN.md`. Future development continues directly on `main`; Prompt 6 has not been started.

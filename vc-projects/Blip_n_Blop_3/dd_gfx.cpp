@@ -31,7 +31,10 @@ void DDInitDirectDraw() {
 // Desc: Ferme Direct Draw
 //-----------------------------------------------------------------------------
 
-void DDCloseDirectDraw() { graphicInstance->~Graphics(); }
+void DDCloseDirectDraw() {
+    delete graphicInstance;
+    graphicInstance = NULL;
+}
 
 //-----------------------------------------------------------------------------
 // Nom: DDSetGfxMode

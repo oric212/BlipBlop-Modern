@@ -28,7 +28,7 @@ void SoundBankBB::play(int n, int flags)
 	if (!sound_on)
 		return;
 
-	if (n >= tab_.size()) {
+	if (n < 0 || static_cast<size_t>(n) >= tab_.size() || !tab_[n]) {
 		debug << "Tentative de jouer son " << n << "\n";
 		return;
 	}
@@ -42,7 +42,8 @@ void SoundBankBB::setVolume(int n, int vol)
 	if (!sound_on)
 		return;
 
-	tab_[n]->setVolume(vol);
+	if (n >= 0 && static_cast<size_t>(n) < tab_.size() && tab_[n])
+		tab_[n]->setVolume(vol);
 }
 
 
@@ -51,7 +52,8 @@ void SoundBankBB::stop(int n)
 	if (!sound_on)
 		return;
 
-	tab_[n]->stop();
+	if (n >= 0 && static_cast<size_t>(n) < tab_.size() && tab_[n])
+		tab_[n]->stop();
 }
 
 

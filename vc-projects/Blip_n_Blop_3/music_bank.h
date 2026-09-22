@@ -40,8 +40,7 @@ class Mp3Music : public Music {
    public:
     Mp3Music(const std::string& fname, bool loop = true) {
         int loopflag = loop ? FSOUND_LOOP_NORMAL : FSOUND_LOOP_OFF;
-        mp3_ = FSOUND_Stream_OpenFile(
-            fname.c_str(), FSOUND_LOOP_NORMAL | loopflag, 0);
+        mp3_ = FSOUND_Stream_OpenFile(fname.c_str(), loopflag, 0);
         if (!mp3_) {
             debug << "Mp3Music(\"" << fname << "\") failed\n";
             throw std::runtime_error("Mp3Music failed loading");
@@ -51,9 +50,7 @@ class Mp3Music : public Music {
     ~Mp3Music() override { FSOUND_Stream_Close(mp3_); }
     void Play() const override { FSOUND_Stream_Play(0, mp3_); }
     void Stop() const override { FSOUND_Stream_Stop(mp3_); }
-    void set_volume(int) override {
-        debug << "Mp3Music::set_volume is a noop\n";
-    }
+    void set_volume(int) override {}
 
    private:
     FSOUND_STREAM* mp3_;
@@ -69,4 +66,5 @@ class MusicBank {
     void play(int n);
     void stop(int n);
     void stop();  // Stoppe TOUTES les musiques
+    void close() { musics_.clear(); }
 };

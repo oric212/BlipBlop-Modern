@@ -39,6 +39,14 @@ HWND WinHandle = NULL;
 static bool safeMode = false;
 
 void ReleaseAll(void) {
+    mbk_niveau.close();
+    mbk_inter.close();
+    mbk_interl.close();
+    sbk_niveau.close();
+    sbk_misc.close();
+    sbk_rpg.close();
+    sbk_bb.close();
+
     if (graphicInstance != NULL) {
         LGXpaker.closePaker();
 
@@ -63,6 +71,7 @@ void ReleaseAll(void) {
     FSOUND_Close();
 
     in.close();
+    SDL_Quit();
 }
 
 void Bug(const char* txt) {
@@ -522,6 +531,7 @@ int main(int argc, char** argv) {
     //------------------------------------------------------------------
 
     if (!InitApp(nCmdShow)) {
+        ReleaseAll();
         return -1;
     }
 
@@ -557,6 +567,8 @@ int main(int argc, char** argv) {
     //
     const std::string config_path = RuntimePaths::resolveString(CONFIG_FILE);
     save_BB3_config(config_path.c_str());
+
+    ReleaseAll();
 
     return 0;
 

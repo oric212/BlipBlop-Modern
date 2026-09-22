@@ -1,88 +1,63 @@
-/******************************************************************
- *
- *
- *		------------------
- *		  SoundBank.cpp
- *		------------------
- *
- *		Classe SoundBank
- *
- *		Représente un tableau/une banque de sons (Sound).
- *
- *
- *		Prosper / LOADED -   V 0.1 - 16 Juillet 2000
- *
- *
- *
- ******************************************************************/
-
-//-----------------------------------------------------------------------------
-//		Headers
-//-----------------------------------------------------------------------------
-
-#include <malloc.h>
-#include <string.h>
-#include <fstream>
-
-#include "ben_debug.h"
-#include "sound.h"
 #include "sound_bank.h"
 
-//-----------------------------------------------------------------------------
-//		Méthodes
-//-----------------------------------------------------------------------------
+#include <fstream>
+#include <vector>
+
+#include "ben_debug.h"
 
 void SoundBank::reload() {
-    if (!filename_.empty()) {
-        loadSFX(filename_.c_str());
-    }
+    if (!filename_.empty()) loadSFX(filename_.c_str());
 }
 
-bool SoundBank::loadSFX(const char* nom_fic) {
-    int n_buff;  // Nombre de buffers
-    int taille;  // Taille d'un WAV
-    void* ptr;
-
-    std::ifstream fh(nom_fic, std::ios::binary);
-
-    if (!fh.good()) {
-        debug << "SoundBank::loadSFX() -> Impossible d'ouvrir le fichier "
-              << nom_fic << "\n";
+bool SoundBank::loadSFX(const char* filename) {
+    std::ifstream file(filename, std::ios::binary);
+    if (!file) {
+        debug << "SoundBank::loadSFX: cannot open " << filename << "\n";
         return false;
     }
 
-    int nb_snd;
-    fh.read(reinterpret_cast<char*>(&nb_snd), sizeof(nb_snd));
-
-    if (nb_snd < 1) {
-        debug << "SoundBank::loadSFX() -> Fichier " << nom_fic << " corrompu\n";
+    int sound_count = 0;
+    file.read(reinterpret_cast<char*>(&sound_count), sizeof(sound_count));
+    if (!file || sound_count < 1) {
+        debug << "SoundBank::loadSFX: invalid sound count in " << filename
+              << "\n";
         return false;
     }
-    tab_.resize(nb_snd);
 
-    for (int i = 0; i < nb_snd; i++) {
-        // Nombre de buffers
-        fh.read(reinterpret_cast<char*>(&n_buff), sizeof(n_buff));
-        fh.read(reinterpret_cast<char*>(&taille), sizeof(taille));  // Taille
-
-        ptr = malloc(taille);
-
-        if (ptr == NULL) {
-            debug << "SoundBank::loadSFX() -> Pas assez de mémoire\n";
+    std::vector<std::unique_ptr<Sound>> loaded_sounds;
+    loaded_sounds.reserve(static_cast<size_t>(sound_count));
+    for (int index = 0; index < sound_count; ++index) {
+        int buffer_count = 0;
+        int byte_count = 0;
+        file.read(reinterpret_cast<char*>(&buffer_count), sizeof(buffer_count));
+        file.read(reinterpret_cast<char*>(&byte_count), sizeof(byte_count));
+        (void)buffer_count;
+        if (!file || byte_count <= 0) {
+            debug << "SoundBank::loadSFX: invalid entry " << index << " in "
+                  << filename << "\n";
             return false;
         }
 
-        // Copie le schnuf en mémoire
-        //
-        fh.read(reinterpret_cast<char*>(ptr), taille);
+        std::vector<char> bytes(static_cast<size_t>(byte_count));
+        file.read(bytes.data(), byte_count);
+        if (!file) {
+            debug << "SoundBank::loadSFX: truncated entry " << index << " in "
+                  << filename << "\n";
+            return false;
+        }
 
-        tab_[i] = std::make_unique<Sound>();
-        tab_[i]->loadFromMem(ptr, taille);
-
-        free(ptr);
+        auto sound = std::make_unique<Sound>();
+        if (!sound->loadFromMem(bytes.data(), byte_count)) {
+            debug << "SoundBank::loadSFX: cannot decode sound " << index
+                  << " in " << filename << "\n";
+            return false;
+        }
+        loaded_sounds.push_back(std::move(sound));
     }
 
-    filename_ = nom_fic;
-
+    tab_ = std::move(loaded_sounds);
+    filename_ = filename;
+    debug << "Loaded " << tab_.size() << " sound effect(s) from " << filename
+          << "\n";
     return true;
 }
