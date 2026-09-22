@@ -6,11 +6,17 @@
 #include <cstdlib>
 #include <system_error>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
 namespace {
 
 std::filesystem::path application_directory;
 std::filesystem::path original_working_directory;
 std::filesystem::path resource_root;
+std::filesystem::path user_data_directory;
 bool legacy_working_directory = false;
 
 std::filesystem::path normalizeLogicalPath(const std::filesystem::path& path) {
@@ -39,6 +45,30 @@ bool initialize(std::string& error) {
 
     application_directory = std::filesystem::path(sdl_base_path).lexically_normal();
     SDL_free(sdl_base_path);
+
+    const char* user_data_override = std::getenv("BLIPBLOP_USER_DATA_DIR");
+    if (user_data_override && *user_data_override) {
+        user_data_directory =
+            std::filesystem::absolute(user_data_override, ec).lexically_normal();
+        if (ec) {
+            error = "Cannot resolve BLIPBLOP_USER_DATA_DIR: " + ec.message();
+            return false;
+        }
+        std::filesystem::create_directories(user_data_directory, ec);
+        if (ec) {
+            error = "Cannot create user data directory: " + ec.message();
+            return false;
+        }
+    } else {
+        char* sdl_pref_path = SDL_GetPrefPath("BlipBlopModern", "BlipnBlop");
+        if (sdl_pref_path == nullptr) {
+            error = "SDL_GetPrefPath failed: " + std::string(SDL_GetError());
+            return false;
+        }
+        user_data_directory =
+            std::filesystem::path(sdl_pref_path).lexically_normal();
+        SDL_free(sdl_pref_path);
+    }
 
     const auto application_data = application_directory / "data";
     const auto legacy_data = original_working_directory / "data";
@@ -72,6 +102,8 @@ const std::filesystem::path& applicationDirectory() { return application_directo
 
 const std::filesystem::path& resourceRoot() { return resource_root; }
 
+const std::filesystem::path& userDataDirectory() { return user_data_directory; }
+
 bool usingLegacyWorkingDirectory() { return legacy_working_directory; }
 
 std::filesystem::path resolve(const std::filesystem::path& logicalPath) {
@@ -93,6 +125,40 @@ std::filesystem::path resolve(const std::filesystem::path& logicalPath) {
 
 std::string resolveString(const std::string& logicalPath) {
     return resolve(logicalPath).string();
+}
+
+std::filesystem::path writablePath(const std::filesystem::path& filename,
+                                   const std::filesystem::path& legacyPath) {
+    const auto destination = (user_data_directory / filename).lexically_normal();
+    std::error_code ec;
+    if (!legacyPath.empty() && !std::filesystem::exists(destination, ec)) {
+        ec.clear();
+        if (std::filesystem::is_regular_file(legacyPath, ec) && !ec) {
+            ec.clear();
+            std::filesystem::copy_file(legacyPath, destination,
+                                       std::filesystem::copy_options::none, ec);
+        }
+    }
+    return destination;
+}
+
+bool commitTemporaryFile(const std::filesystem::path& temporary,
+                         const std::filesystem::path& destination,
+                         std::string& error) {
+#ifdef _WIN32
+    if (MoveFileExW(temporary.c_str(), destination.c_str(),
+                    MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        return true;
+    }
+    error = "MoveFileEx failed with error " + std::to_string(GetLastError());
+    return false;
+#else
+    std::error_code ec;
+    std::filesystem::rename(temporary, destination, ec);
+    if (!ec) return true;
+    error = ec.message();
+    return false;
+#endif
 }
 
 }  // namespace RuntimePaths

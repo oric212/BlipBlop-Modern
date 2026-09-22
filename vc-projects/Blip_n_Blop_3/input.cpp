@@ -32,6 +32,7 @@
 #include "graphics.h"
 #include "input.h"
 #include "ben_debug.h"
+#include "control_alias.h"
 
 //-----------------------------------------------------------------------------
 //		Déclaration REELLE de l'objet 'in' global
@@ -44,11 +45,15 @@ Input		in;
 // Desc: Met à NULL les valeurs susceptibles de foirer
 //-----------------------------------------------------------------------------
 
-Input::Input() : n_joy(0)
+Input::Input()
+    : n_joy(0),
+      last_input_device(InputDevice::Keyboard),
+      pause_pressed(false)
 {
 	memset(js, 0, sizeof(js));
 	memset(buffer, 0, sizeof(buffer));
 	memset(specialsbuffer, 0, sizeof(specialsbuffer));
+	pause_pressed = false;
 	memset(aliastab, 0, sizeof(aliastab));
 }
 
@@ -91,7 +96,14 @@ bool Input::openJoystick(int device_index)
 		return false;
 	}
 
-	SDL_Joystick* handle = SDL_JoystickOpen(device_index);
+	SDL_GameController* controller = nullptr;
+	SDL_Joystick* handle = nullptr;
+	if (SDL_IsGameController(device_index)) {
+		controller = SDL_GameControllerOpen(device_index);
+		if (controller) handle = SDL_GameControllerGetJoystick(controller);
+	} else {
+		handle = SDL_JoystickOpen(device_index);
+	}
 	if (!handle) {
 		debug << "Cannot open joystick " << device_index << ": "
 		      << SDL_GetError() << "\n";
@@ -99,11 +111,15 @@ bool Input::openJoystick(int device_index)
 	}
 	const SDL_JoystickID instance_id = SDL_JoystickInstanceID(handle);
 	if (joystickSlot(instance_id) >= 0) {
-		SDL_JoystickClose(handle);
+		if (controller)
+			SDL_GameControllerClose(controller);
+		else
+			SDL_JoystickClose(handle);
 		return true;
 	}
 
 	js[slot].handle = handle;
+	js[slot].controller = controller;
 	js[slot].instance_id = instance_id;
 	const char* name = SDL_JoystickName(handle);
 	SDL_strlcpy(js[slot].name, name ? name : "Unknown joystick",
@@ -111,7 +127,8 @@ bool Input::openJoystick(int device_index)
 	memset(js[slot].buttons, 0, sizeof(js[slot].buttons));
 	memset(&js[slot].directions, 0, sizeof(js[slot].directions));
 	++n_joy;
-	debug << "Opened joystick slot " << slot << ": " << js[slot].name
+	debug << "Opened " << (controller ? "game controller" : "raw joystick")
+	      << " slot " << slot << ": " << js[slot].name
 	      << " (instance " << js[slot].instance_id << ")\n";
 	return true;
 }
@@ -120,8 +137,12 @@ void Input::closeJoystick(SDL_JoystickID instance_id)
 {
 	const int slot = joystickSlot(instance_id);
 	if (slot < 0) return;
-	SDL_JoystickClose(js[slot].handle);
+	if (js[slot].controller)
+		SDL_GameControllerClose(js[slot].controller);
+	else
+		SDL_JoystickClose(js[slot].handle);
 	js[slot].handle = nullptr;
+	js[slot].controller = nullptr;
 	js[slot].instance_id = -1;
 	memset(js[slot].buttons, 0, sizeof(js[slot].buttons));
 	memset(&js[slot].directions, 0, sizeof(js[slot].directions));
@@ -140,6 +161,7 @@ bool Input::open(int flags)
 {
 	close();
 	SDL_JoystickEventState(SDL_TRUE);
+	SDL_GameControllerEventState(SDL_ENABLE);
 	const int detected = SDL_NumJoysticks();
 	for (int i = 0; i < detected; ++i) openJoystick(i);
 	debug << n_joy << " joystick(s) opened\n";
@@ -258,6 +280,7 @@ void Input::update()
 
 		if (e.type == SDL_KEYDOWN)
 		{
+			last_input_device = InputDevice::Keyboard;
 			if (e.key.keysym.sym >= 0 && e.key.keysym.sym < 256)
 			{
 				buffer[e.key.keysym.sym] = 1;
@@ -296,13 +319,26 @@ void Input::update()
 
 		if (e.type == SDL_JOYBUTTONDOWN || e.type == SDL_JOYBUTTONUP)
 		{
+			if (e.type == SDL_JOYBUTTONDOWN)
+				last_input_device = InputDevice::Controller;
 			const int slot = joystickSlot(e.jbutton.which);
 			if (slot >= 0 && e.jbutton.button < sizeof(js[slot].buttons))
 				js[slot].buttons[e.jbutton.button] =
 				    e.type == SDL_JOYBUTTONDOWN;
 		}
+		if (e.type == SDL_CONTROLLERBUTTONDOWN) {
+			last_input_device = InputDevice::Controller;
+			const DIJOYSTATE* player_one = controllerForPlayer(0);
+			if (player_one && player_one->instance_id == e.cbutton.which &&
+			    e.cbutton.button == SDL_CONTROLLER_BUTTON_START)
+				pause_pressed = true;
+		}
+		if (e.type == SDL_CONTROLLERAXISMOTION &&
+		    (e.caxis.value < -DEAD_ZONE || e.caxis.value > DEAD_ZONE))
+			last_input_device = InputDevice::Controller;
 		if (e.type == SDL_JOYHATMOTION)
 		{
+			last_input_device = InputDevice::Controller;
 			const int slot = joystickSlot(e.jhat.which);
 			if (slot < 0) continue;
 			js[slot].directions.down = false;
@@ -322,6 +358,8 @@ void Input::update()
 
 		if (e.type == SDL_JOYAXISMOTION)
 		{
+			if (e.jaxis.value < -DEAD_ZONE || e.jaxis.value > DEAD_ZONE)
+				last_input_device = InputDevice::Controller;
 			const int slot = joystickSlot(e.jaxis.which);
 			if (slot < 0) continue;
 		
@@ -550,6 +588,67 @@ void Input::setAlias(int a, unsigned int val)
 		aliastab[a] = val;
 }
 
+const DIJOYSTATE* Input::controllerForPlayer(int player) const
+{
+	int found = 0;
+	for (int i = 0; i < MAX_JOY; ++i) {
+		if (!js[i].controller) continue;
+		if (found++ == player) return &js[i];
+	}
+	return nullptr;
+}
+
+bool Input::controllerAliasPressed(int alias) const
+{
+	const int player = alias >= ALIAS_P2_UP ? 1 : 0;
+	const DIJOYSTATE* state = controllerForPlayer(player);
+	if (!state) return false;
+	SDL_GameController* controller = state->controller;
+	const bool left = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_LEFT) ||
+	                  SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTX) < -DEAD_ZONE;
+	const bool right = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_RIGHT) ||
+	                   SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTX) > DEAD_ZONE;
+	const bool up = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_UP) ||
+	                SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTY) < -DEAD_ZONE;
+	const bool down = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_DOWN) ||
+	                  SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTY) > DEAD_ZONE;
+
+	switch (alias) {
+		case ALIAS_P1_LEFT: case ALIAS_P2_LEFT: return left;
+		case ALIAS_P1_RIGHT: case ALIAS_P2_RIGHT: return right;
+		case ALIAS_P1_UP: case ALIAS_P2_UP: return up;
+		case ALIAS_P1_DOWN: case ALIAS_P2_DOWN: return down;
+		case ALIAS_P1_FIRE: case ALIAS_P2_FIRE:
+			return SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_X);
+		case ALIAS_P1_JUMP: case ALIAS_P2_JUMP:
+			return SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_A);
+		case ALIAS_P1_SUPER: case ALIAS_P2_SUPER:
+			return SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_B);
+		default: return false;
+	}
+}
+
+int Input::scanAlias(int alias) const
+{
+	if (alias < 0 || alias >= static_cast<int>(sizeof(aliastab) / sizeof(aliastab[0])))
+		return 0;
+	return scanKey(aliastab[alias]) || controllerAliasPressed(alias);
+}
+
+bool Input::menuConfirmPressed() const
+{
+	const DIJOYSTATE* state = controllerForPlayer(0);
+	return state && SDL_GameControllerGetButton(
+	                    state->controller, SDL_CONTROLLER_BUTTON_A);
+}
+
+bool Input::pausePressed()
+{
+	const bool pressed = pause_pressed;
+	pause_pressed = false;
+	return pressed;
+}
+
 //-----------------------------------------------------------------------------
 // Nom: Input::close()
 // Desc: Ferme toutes les entrées
@@ -558,8 +657,12 @@ void Input::setAlias(int a, unsigned int val)
 void Input::close()
 {
 	for (int i = 0; i < MAX_JOY; ++i) {
-		if (js[i].handle) SDL_JoystickClose(js[i].handle);
+		if (js[i].controller)
+			SDL_GameControllerClose(js[i].controller);
+		else if (js[i].handle)
+			SDL_JoystickClose(js[i].handle);
 		js[i].handle = nullptr;
+		js[i].controller = nullptr;
 		js[i].instance_id = -1;
 	}
 	n_joy = 0;

@@ -35,7 +35,8 @@ int OptionsPanel::ProcessEvent() {
         vSyncOn = !vSyncOn;
         RefreshVsync();
     }
-    if (in.scanKey(DIK_RETURN) || in.scanAlias(ALIAS_P1_FIRE)) {
+    if (in.scanKey(DIK_RETURN) || in.scanAlias(ALIAS_P1_FIRE) ||
+        in.menuConfirmPressed()) {
         switch (items_.focused()) {
             case 0:
                 vSyncOn = !vSyncOn;

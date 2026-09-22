@@ -17,7 +17,8 @@ int MainMenu::ProcessEvent() {
     } else if (in.scanKey(DIK_DOWN) || in.scanAlias(ALIAS_P1_DOWN)) {
         items_.MoveDown();
     }
-    if (in.scanKey(DIK_RETURN) || in.scanAlias(ALIAS_P1_FIRE)) {
+    if (in.scanKey(DIK_RETURN) || in.scanAlias(ALIAS_P1_FIRE) ||
+        in.menuConfirmPressed()) {
         switch (items_.focused()) {
             case 0:
                 return MenuType::Start;

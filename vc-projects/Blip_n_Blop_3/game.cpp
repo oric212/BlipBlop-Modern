@@ -1713,7 +1713,7 @@ void Game::drawTimer() {
 void Game::updateMenu() {
     // Appelle le menu s'il y a lieu de le faire
     //
-    if (in.scanKey(DIK_ESCAPE)) {
+    if (in.scanKey(DIK_ESCAPE) || in.pausePressed()) {
         MenuGame menu;
         int r;
 

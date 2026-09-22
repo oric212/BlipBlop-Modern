@@ -168,12 +168,18 @@ struct DIJOYSTATE
 {
 	char name[64];
 	SDL_Joystick *handle;
+	SDL_GameController *controller;
 	SDL_JoystickID instance_id;
 	unsigned char buttons[128];	//Joypad with more than 187 buttons? (100/101/102/103 is for directions)
 	struct
 	{
 		unsigned char left, right, up, down;
 	} directions;
+};
+
+enum class InputDevice {
+	Keyboard,
+	Controller
 };
 
 extern bool app_killed;
@@ -195,6 +201,10 @@ private:
 	int joystickSlot(SDL_JoystickID instance_id) const;
 	bool openJoystick(int device_index);
 	void closeJoystick(SDL_JoystickID instance_id);
+	const DIJOYSTATE* controllerForPlayer(int player) const;
+	bool controllerAliasPressed(int alias) const;
+	InputDevice last_input_device;
+	bool pause_pressed;
 
 public:
 	Input();
@@ -202,10 +212,10 @@ public:
 
 	int scanKey(unsigned int k) const;
 
-	inline int scanAlias(int a) const
-	{
-		return (scanKey(aliastab[a]));
-	};
+	int scanAlias(int a) const;
+	bool menuConfirmPressed() const;
+	bool pausePressed();
+	InputDevice lastInputDevice() const { return last_input_device; }
 	inline unsigned int getAlias(int n) const
 	{
 		return aliastab[n];

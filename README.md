@@ -6,6 +6,12 @@ This repository builds upon the original Blip'n Blop source code and the work of
 
 See [PROG.md](PROG.md) for the current verified status and [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the staged modernization roadmap.
 
+## Modern controller defaults
+
+Recognized SDL game controllers work alongside the original keyboard controls. For each player, the D-pad or left stick moves, X fires, A jumps, and B uses the super attack. Player 1 can also use A to confirm menu selections and Start to pause. The first two recognized controllers are assigned to players 1 and 2; unsupported devices retain the legacy raw-joystick path.
+
+Configuration, high scores, and `BlipBlop.log` are stored in SDL's per-user preference directory (`%APPDATA%\BlipBlopModern\BlipnBlop\` on Windows). On first use, existing `data/bb.cfg` and `data/bb.scr` files are copied forward when present.
+
 ---
 
 # Original README

@@ -1,6 +1,6 @@
 #define NAME "Blip'n Blop"
-#define CONFIG_FILE "data/bb.cfg"
-#define HISCORES_FILE "data/bb.scr"
+#define CONFIG_FILE "bb.cfg"
+#define HISCORES_FILE "bb.scr"
 
 #define WIN32_LEAN_AND_MEAN
 
@@ -37,6 +37,8 @@ HWND WinHandle = NULL;
 // FSOUND_SAMPLE * samp_test = NULL;
 
 static bool safeMode = false;
+static std::string config_path;
+static std::string high_scores_path;
 
 void ReleaseAll(void) {
     mbk_niveau.close();
@@ -182,7 +184,6 @@ static bool InitApp(int nCmdShow) {
     //                      Charge la configuration
     //------------------------------------------------------------------
 
-    const std::string config_path = RuntimePaths::resolveString(CONFIG_FILE);
     load_BB3_config(config_path.c_str());
 
     //------------------------------------------------------------------
@@ -191,7 +192,6 @@ static bool InitApp(int nCmdShow) {
 
     hi_scores.init();
 
-    const std::string high_scores_path = RuntimePaths::resolveString(HISCORES_FILE);
     if (!hi_scores.load(high_scores_path.c_str())) {
         debug << "Cannot load hi-scores file. Use default hi-scores\n";
         hi_scores.init();
@@ -503,6 +503,16 @@ int main(int argc, char** argv) {
         return -1;
     }
 
+    const auto legacy_config = RuntimePaths::resolve("data/bb.cfg");
+    const auto legacy_scores = RuntimePaths::resolve("data/bb.scr");
+    config_path = RuntimePaths::writablePath(CONFIG_FILE, legacy_config).string();
+    high_scores_path = RuntimePaths::writablePath(HISCORES_FILE, legacy_scores).string();
+    const auto log_path =
+        (RuntimePaths::userDataDirectory() / "BlipBlop.log").string();
+    if (!initializeDebugLog(log_path)) {
+        fprintf(stderr, "Cannot open log file: %s\n", log_path.c_str());
+    }
+
     debug << "Application directory: "
           << RuntimePaths::applicationDirectory().string() << "\n";
     debug << "Resource root: " << RuntimePaths::resourceRoot().string();
@@ -511,7 +521,11 @@ int main(int argc, char** argv) {
     } else {
         debug << " (executable-relative)";
     }
-    debug << "\n" << std::flush;
+    debug << "\nUser data directory: "
+          << RuntimePaths::userDataDirectory().string()
+          << "\nConfig file: " << config_path
+          << "\nHigh-scores file: " << high_scores_path
+          << "\nLog file: " << log_path << "\n" << std::flush;
 
     char lpCmdLine[512] = {0};
     for (int i = 1; i < argc; i++) {
@@ -556,16 +570,14 @@ int main(int argc, char** argv) {
 
     // Sauvegarde les hi-scores
     //
-    const std::string high_scores_path = RuntimePaths::resolveString(HISCORES_FILE);
     if (!hi_scores.save(high_scores_path.c_str())) {
         debug << "Cannot save hi-scores\n";
     } else {
-        debug << "Saving " << HISCORES_FILE << " as hi-scores file.\n";
+        debug << "Saving " << high_scores_path << " as hi-scores file.\n";
     }
 
     // Sauvegarde la configuration
     //
-    const std::string config_path = RuntimePaths::resolveString(CONFIG_FILE);
     save_BB3_config(config_path.c_str());
 
     ReleaseAll();

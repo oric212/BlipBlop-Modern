@@ -106,6 +106,18 @@ The upstream source for the original artwork is https://github.com/benkaraban/bl
 
 VS2022 x64 Debug and Release builds both succeeded with the resource compiler producing an 89,880-byte `BlipnBlop.res` for each configuration. Windows' `Icon.ExtractAssociatedIcon` successfully extracted the new 32x32 icon from both generated executables; the extracted PNGs had identical SHA-256 hashes and the Release extraction was visually inspected against the source artwork. The `.ico` was also inspected programmatically and contains all six intended sizes. Windows Explorer and taskbar presentation were not visually tested, so shell icon-cache behavior is not claimed.
 
+## Prompt 6 controller and writable-data modernization
+
+Recognized devices now use SDL2's `SDL_GameController` abstraction and built-in mapping database. The first recognized controller drives player 1 and the second drives player 2. D-pad and left-stick axes map to movement, X maps to fire, A maps to jump, B maps to the super attack, player-1 A confirms menu and character selections, and player-1 Start raises a one-shot pause action. Keyboard aliases remain active simultaneously. Input records whether the most recent activity came from the keyboard or a controller for future prompt rendering. Devices that SDL does not recognize as game controllers retain the bounded raw-joystick path from Prompt 5.
+
+Startup enumerates each SDL joystick device once and opens it as a game controller when supported, otherwise as a raw joystick. SDL instance IDs identify removal events; disconnect closes the correct owning handle and clears its state, while a later add event fills the first free slot. Duplicate instance IDs are rejected and controller/open failures remain non-fatal to keyboard play. All handles close before SDL shutdown.
+
+Writable state moved from executable/source-tree `data/` to the SDL preference directory, which is `%APPDATA%\BlipBlopModern\BlipnBlop\` on the verified Windows environment. `bb.cfg`, `bb.scr`, and `BlipBlop.log` now live there. If a destination config or score file is absent, an existing executable/source-tree legacy file is copied once; existing per-user data is never overwritten by migration. Both the historical 61-byte config and current 62-byte config are accepted, malformed/truncated config falls back wholly to defaults, and malformed scores fall back to the original default table. Successful config and score saves use temporary files followed by a replace operation so an incomplete write does not destroy the previous file. `BLIPBLOP_USER_DATA_DIR` provides an explicit isolated-directory override for development and verification.
+
+VS2022 x64 Debug and Release builds compiled successfully. In isolated temporary user-data tests, an empty directory received the existing 61-byte config and 244-byte score file, both loaded successfully, and a normal window-close saved the current 62-byte config and 244-byte score file. A second normal launch loaded those saved files and exited successfully. Separate three-byte malformed config and score fixtures produced explicit fallback diagnostics and were replaced on clean exit with valid 62-byte and 244-byte files. The attached `Keychron Link` was safely enumerated as a raw joystick; no SDL-recognized game controller was available, so standardized mappings, physical gameplay/menu input, and live controller disconnect/reconnect were not physically tested.
+
+The Release `deploy` target regenerated `game-build/` with the current executable, 128 original data files, SDL2/SDL2_mixer, required codec DLLs, and MSVC runtime DLLs. SHA-256 comparison confirmed `game-build/BlipnBlop.exe` is byte-for-byte identical to the final Release executable (`D3277D4DE7052A6BF5FEBD60FED15262B6508CFFBB396F741798003EF890FDF2`). Extracting its associated icon produced the same verified icon hash as the pre-Prompt-6 icon build. A clean deployed run from an unrelated working directory selected `game-build/` as its executable-relative resource root, migrated writable state into an isolated user-data directory, and exited normally with config and scores saved.
+
 ## Architecture audit
 
 - **Entry point and startup:** `blip_n_blop_3.cpp` contains `main`. `InitApp` initializes the SDL_mixer-backed FMOD compatibility API, reads `data/bb.cfg` and `data/bb.scr`, loads localized text, initializes graphics/input, creates the 640x480 surfaces, initializes the LGX decoder, and loads fonts/interface banks. `main` calls `Game::go`, then writes high scores and configuration.
@@ -136,10 +148,10 @@ The build ideas are useful and informed this baseline, but should not be copied 
 ## Important discoveries and compatibility risks
 
 1. LGX output and halftone access now honor surface pixel width and pitch, but buffer-length validation for LGX data embedded inside larger custom banks remains incomplete because the legacy memory decoder receives no source length.
-2. Resource lookup is now executable-relative, but changing the process working directory remains a compatibility bridge for untouched legacy call sites. The pre-main log stream still opens relative to the caller's working directory.
-3. The raw binary config format serializes implementation-sized `bool`/`int` values without validation and writes into `data/`.
+2. Resource lookup is executable-relative, but changing the process working directory remains a compatibility bridge for untouched legacy call sites.
+3. The raw binary config format remains implementation-sized for backward compatibility; checked reads accept the known historical/current layouts and reject malformed files.
 4. The renderer recreates a texture every frame, lacks error propagation, and does not preserve 4:3 output on arbitrary windows/displays.
-5. Input uses legacy fixed buffers and raw joystick indexes; controller bounds and device lifecycle need auditing.
+5. SDL-recognized controller mappings are implemented, but physical standardized-controller and hot-plug behavior still needs verification with suitable hardware.
 6. The fixed-step regulator is gameplay-critical. Modernization must not change its effective timing without before/after behavioral measurement.
 7. Numerous fixed-size buffers, C string operations, binary reads, global ownership patterns, and unchecked file contents create x64/runtime risks.
 8. Cleanup now runs from normal shutdown and initialization failure, but clean interactive exit and teardown still need broader runtime verification.
@@ -166,23 +178,25 @@ The build ideas are useful and informed this baseline, but should not be copied 
 - Hardened SDL2_mixer initialization, legacy padded-MP3 loading, music/SFX bank validation, loop semantics, ownership, and shutdown.
 - Hardened keyboard focus handling and bounded legacy joystick enumeration, event mapping, hot-plug, and cleanup without changing mappings.
 - Completed Prompt 5 and merged the Prompt 1-5 core-modernization milestone to `main` while preserving its commit history.
+- Added standardized SDL game-controller defaults while retaining simultaneous keyboard and raw-joystick compatibility.
+- Moved config, high scores, and logs to SDL's per-user directory with conservative migration, checked legacy-format loading, and recoverable writes.
 
 ## Known problems
 
 - Broader interactive gameplay behavior beyond the main menu and display controls remains unverified.
-- `BlipBlop.log` is still opened relative to the initial working directory before `main`.
 - In-memory LGX decoding cannot fully reject truncated input until callers provide buffer lengths.
 - Multi-monitor behavior and moving a live window between monitors with different DPI settings remain unverified.
 - Mouse-to-logical-coordinate conversion is not implemented; no current gameplay/menu path consumes mouse coordinates.
 - Character selection, first-level presentation, and pause overlays were not interactively verified during Prompt 4.
 - Audio playback was accepted by SDL2_mixer but was not acoustically verified; representative gameplay SFX remain untested.
 - The Windows executable embeds a multi-resolution icon derived from the original main-menu Blip and Blop artwork; editor icons were deliberately not substituted.
+- No SDL-recognized controller was available for physical mapping or hot-plug verification; only raw-device enumeration was exercised.
 - There is no automated test suite or current CI workflow.
 
 ## Current task
 
-Prompt 5 is complete: audio/resource ownership and legacy input safety are hardened, standalone startup is verified, and the core Prompt 1-5 milestone is merged to `main`.
+Prompt 6 is complete: standardized controller support, per-user writable state, compatibility migration, guarded persistence, Debug/Release builds, and the refreshed deployed runtime have been verified to the extent possible without a recognized physical game controller.
 
 ## Next task
 
-Prompt 6 is the controller/remapping and configuration modernization work described in `IMPLEMENTATION_PLAN.md`. Future development continues directly on `main`; Prompt 6 has not been started.
+Prompt 7 is the packaging/CI and controller-prompt work described in `IMPLEMENTATION_PLAN.md`. It has not been started.

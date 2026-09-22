@@ -23,6 +23,30 @@
 #include "control_alias.h"
 #include "fmod.h"
 #include "globals.h"
+#include "runtime_paths.h"
+
+#include <array>
+#include <filesystem>
+
+namespace {
+
+constexpr std::array<int, 14> aliases = {
+    ALIAS_P1_UP,   ALIAS_P1_DOWN, ALIAS_P1_LEFT, ALIAS_P1_RIGHT,
+    ALIAS_P1_FIRE, ALIAS_P1_JUMP, ALIAS_P1_SUPER,
+    ALIAS_P2_UP,   ALIAS_P2_DOWN, ALIAS_P2_LEFT, ALIAS_P2_RIGHT,
+    ALIAS_P2_FIRE, ALIAS_P2_JUMP, ALIAS_P2_SUPER};
+
+template <typename T>
+bool readValue(FILE* file, T& value) {
+    return fread(&value, sizeof(value), 1, file) == 1;
+}
+
+template <typename T>
+bool writeValue(FILE* file, const T& value) {
+    return fwrite(&value, sizeof(value), 1, file) == 1;
+}
+
+}  // namespace
 
 bool	vSyncOn = true;
 
@@ -45,65 +69,43 @@ bool fullscreen = false; // THIS IS UGLY AS FUCK. WAY TOO MANY GLOBALS
 
 void load_BB3_config(const char * cfg_file)
 {
-	FILE *	fic;
-	int		a;
-
-	fic = fopen(cfg_file, "rb");
+	set_default_config(true);
+	FILE *fic = fopen(cfg_file, "rb");
 
 	if (fic == NULL) {
 		debug << "Cannot find config file. Will use default config.\n";
-		set_default_config(true);
 	} else {
-		debug << "Using " << cfg_file << " as configuration file.\n";
-
-		fread(&vSyncOn, sizeof(vSyncOn), 1, fic);
-		fread(&fullscreen, sizeof(fullscreen), 1, fic);
-		fread(&lang_type, sizeof(lang_type), 1, fic);
-
-		fread(&a, sizeof(a), 1, fic);
-		in.setAlias(ALIAS_P1_UP, a);
-
-		fread(&a, sizeof(a), 1, fic);
-		in.setAlias(ALIAS_P1_DOWN, a);
-
-		fread(&a, sizeof(a), 1, fic);
-		in.setAlias(ALIAS_P1_LEFT, a);
-
-		fread(&a, sizeof(a), 1, fic);
-		in.setAlias(ALIAS_P1_RIGHT, a);
-
-		fread(&a, sizeof(a), 1, fic);
-		in.setAlias(ALIAS_P1_FIRE, a);
-
-		fread(&a, sizeof(a), 1, fic);
-		in.setAlias(ALIAS_P1_JUMP, a);
-
-		fread(&a, sizeof(a), 1, fic);
-		in.setAlias(ALIAS_P1_SUPER, a);
-
-
-		fread(&a, sizeof(a), 1, fic);
-		in.setAlias(ALIAS_P2_UP, a);
-
-		fread(&a, sizeof(a), 1, fic);
-		in.setAlias(ALIAS_P2_DOWN, a);
-
-		fread(&a, sizeof(a), 1, fic);
-		in.setAlias(ALIAS_P2_LEFT, a);
-
-		fread(&a, sizeof(a), 1, fic);
-		in.setAlias(ALIAS_P2_RIGHT, a);
-
-		fread(&a, sizeof(a), 1, fic);
-		in.setAlias(ALIAS_P2_FIRE, a);
-
-		fread(&a, sizeof(a), 1, fic);
-		in.setAlias(ALIAS_P2_JUMP, a);
-
-		fread(&a, sizeof(a), 1, fic);
-		in.setAlias(ALIAS_P2_SUPER, a);
-
+		fseek(fic, 0, SEEK_END);
+		const long file_size = ftell(fic);
+		rewind(fic);
+		bool loaded_vsync = true;
+		bool loaded_fullscreen = false;
+		int loaded_language = LANG_UK;
+		std::array<int, aliases.size()> loaded_aliases{};
+		const long legacy_size = sizeof(loaded_vsync) + sizeof(loaded_language) +
+		                         sizeof(int) * loaded_aliases.size();
+		const long current_size = legacy_size + sizeof(loaded_fullscreen);
+		bool valid = file_size == legacy_size || file_size == current_size;
+		valid = valid && readValue(fic, loaded_vsync);
+		if (file_size == current_size)
+			valid = valid && readValue(fic, loaded_fullscreen);
+		valid = valid && readValue(fic, loaded_language);
+		for (int& value : loaded_aliases) valid = valid && readValue(fic, value);
+		valid = valid && fgetc(fic) == EOF &&
+		        (loaded_language == LANG_FR || loaded_language == LANG_UK);
 		fclose(fic);
+
+		if (!valid) {
+			debug << "Configuration file is malformed or truncated. Using defaults: "
+			      << cfg_file << "\n";
+		} else {
+			vSyncOn = loaded_vsync;
+			fullscreen = loaded_fullscreen;
+			lang_type = loaded_language;
+			for (size_t i = 0; i < aliases.size(); ++i)
+				in.setAlias(aliases[i], loaded_aliases[i]);
+			debug << "Using " << cfg_file << " as configuration file.\n";
+		}
 	}
 
 	lang_type = LANG_UK;
@@ -111,65 +113,35 @@ void load_BB3_config(const char * cfg_file)
 
 void save_BB3_config(const char * cfg_file)
 {
-	FILE *	fic;
-	int		a;
-
-	fic = fopen(cfg_file, "wb");
+	const std::filesystem::path destination(cfg_file);
+	const std::filesystem::path temporary = destination.string() + ".tmp";
+	FILE *fic = fopen(temporary.string().c_str(), "wb");
 
 	if (fic == NULL) {
 		debug << "Cannot save config file.\n";
 	} else {
 		debug << "Saving " << cfg_file << " as configuration file.\n";
-
-
-		fwrite(&vSyncOn, sizeof(vSyncOn), 1, fic);
-		fwrite(&fullscreen, sizeof(fullscreen), 1, fic);
-		fwrite(&lang_type, sizeof(lang_type), 1, fic);
-
-		a = in.getAlias(ALIAS_P1_UP);
-		fwrite(&a, sizeof(a), 1, fic);
-
-		a = in.getAlias(ALIAS_P1_DOWN);
-		fwrite(&a, sizeof(a), 1, fic);
-
-		a = in.getAlias(ALIAS_P1_LEFT);
-		fwrite(&a, sizeof(a), 1, fic);
-
-		a = in.getAlias(ALIAS_P1_RIGHT);
-		fwrite(&a, sizeof(a), 1, fic);
-
-		a = in.getAlias(ALIAS_P1_FIRE);
-		fwrite(&a, sizeof(a), 1, fic);
-
-		a = in.getAlias(ALIAS_P1_JUMP);
-		fwrite(&a, sizeof(a), 1, fic);
-
-		a = in.getAlias(ALIAS_P1_SUPER);
-		fwrite(&a, sizeof(a), 1, fic);
-
-
-		a = in.getAlias(ALIAS_P2_UP);
-		fwrite(&a, sizeof(a), 1, fic);
-
-		a = in.getAlias(ALIAS_P2_DOWN);
-		fwrite(&a, sizeof(a), 1, fic);
-
-		a = in.getAlias(ALIAS_P2_LEFT);
-		fwrite(&a, sizeof(a), 1, fic);
-
-		a = in.getAlias(ALIAS_P2_RIGHT);
-		fwrite(&a, sizeof(a), 1, fic);
-
-		a = in.getAlias(ALIAS_P2_FIRE);
-		fwrite(&a, sizeof(a), 1, fic);
-
-		a = in.getAlias(ALIAS_P2_JUMP);
-		fwrite(&a, sizeof(a), 1, fic);
-
-		a = in.getAlias(ALIAS_P2_SUPER);
-		fwrite(&a, sizeof(a), 1, fic);
-
-		fclose(fic);
+		bool valid = writeValue(fic, vSyncOn) && writeValue(fic, fullscreen) &&
+		             writeValue(fic, lang_type);
+		for (int alias : aliases) {
+			const int value = static_cast<int>(in.getAlias(alias));
+			valid = valid && writeValue(fic, value);
+		}
+		const bool flushed = fflush(fic) == 0;
+		const bool closed = fclose(fic) == 0;
+		valid = valid && flushed && closed;
+		if (!valid) {
+			debug << "Cannot complete config write; keeping previous file.\n";
+			std::error_code ec;
+			std::filesystem::remove(temporary, ec);
+			return;
+		}
+		std::string error;
+		if (!RuntimePaths::commitTemporaryFile(temporary, destination, error)) {
+			debug << "Cannot replace config file: " << error << "\n";
+			std::error_code ec;
+			std::filesystem::remove(temporary, ec);
+		}
 	}
 }
 
