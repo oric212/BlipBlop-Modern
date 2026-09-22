@@ -168,6 +168,7 @@ struct DIJOYSTATE
 {
 	char name[64];
 	SDL_Joystick *handle;
+	SDL_JoystickID instance_id;
 	unsigned char buttons[128];	//Joypad with more than 187 buttons? (100/101/102/103 is for directions)
 	struct
 	{
@@ -187,8 +188,13 @@ private:
 	int				n_joy;
 	DIJOYSTATE		js[MAX_JOY];
 	char 			buffer[256];
-	char			specialsbuffer[0xFFF];
+	char			specialsbuffer[0x1000];
 	unsigned int	aliastab[256];
+
+	void clearState();
+	int joystickSlot(SDL_JoystickID instance_id) const;
+	bool openJoystick(int device_index);
+	void closeJoystick(SDL_JoystickID instance_id);
 
 public:
 	Input();

@@ -33,8 +33,12 @@
 
 #include <fstream>
 
+#include <algorithm>
+#include <cstdint>
+#include <cstring>
 #include <fcntl.h>
 #include <stdio.h>
+#include <vector>
 
 #include "ben_debug.h"
 #include "dd_gfx.h"
@@ -45,6 +49,64 @@
 //-----------------------------------------------------------------------------
 
 LGXpacker	LGXpaker;
+
+namespace {
+
+uint32_t readSurfacePixel(const uint8_t* pixel, int bytes_per_pixel) {
+    switch (bytes_per_pixel) {
+        case 1:
+            return *pixel;
+        case 2: {
+            uint16_t value;
+            std::memcpy(&value, pixel, sizeof(value));
+            return value;
+        }
+        case 3:
+#if SDL_BYTEORDER == SDL_BIG_ENDIAN
+            return (uint32_t(pixel[0]) << 16) | (uint32_t(pixel[1]) << 8) |
+                   uint32_t(pixel[2]);
+#else
+            return uint32_t(pixel[0]) | (uint32_t(pixel[1]) << 8) |
+                   (uint32_t(pixel[2]) << 16);
+#endif
+        case 4: {
+            uint32_t value;
+            std::memcpy(&value, pixel, sizeof(value));
+            return value;
+        }
+        default:
+            return 0;
+    }
+}
+
+void writeSurfacePixel(uint8_t* pixel, int bytes_per_pixel, uint32_t value) {
+    switch (bytes_per_pixel) {
+        case 1:
+            *pixel = static_cast<uint8_t>(value);
+            break;
+        case 2: {
+            const uint16_t narrow_value = static_cast<uint16_t>(value);
+            std::memcpy(pixel, &narrow_value, sizeof(narrow_value));
+            break;
+        }
+        case 3:
+#if SDL_BYTEORDER == SDL_BIG_ENDIAN
+            pixel[0] = static_cast<uint8_t>((value >> 16) & 0xff);
+            pixel[1] = static_cast<uint8_t>((value >> 8) & 0xff);
+            pixel[2] = static_cast<uint8_t>(value & 0xff);
+#else
+            pixel[0] = static_cast<uint8_t>(value & 0xff);
+            pixel[1] = static_cast<uint8_t>((value >> 8) & 0xff);
+            pixel[2] = static_cast<uint8_t>((value >> 16) & 0xff);
+#endif
+            break;
+        case 4:
+            std::memcpy(pixel, &value, sizeof(value));
+            break;
+    }
+}
+
+}  // namespace
 
 //-----------------------------------------------------------------------------
 //		LGXpacker::LGXpacker() - met les pointeurs à NULL
@@ -521,11 +583,18 @@ SDL::Surface * LGXpacker::loadLGX(void * ptr, int flags, int * version)
 	// data pointe sur les données du fichier (après le header)
 	unsigned short * data = (unsigned short *)((char *) ptr + sizeof(LGX_HEADER));
 
-	int				i;
-	unsigned int	col;
 	unsigned short	d;
 
-	int				dpitch = ddsd.lPitch - 2 * xs;
+	SDL_Surface* const sdl_surface = surf->Get();
+	const int bytes_per_pixel = sdl_surface->format->BytesPerPixel;
+	if (bytes_per_pixel < 1 || bytes_per_pixel > 4 ||
+	    ddsd.lPitch < static_cast<unsigned int>(xs * bytes_per_pixel)) {
+		debug << "LGXpacker::LoadLGX() / Unsupported surface layout: "
+		      << bytes_per_pixel << " bytes per pixel, pitch " << ddsd.lPitch
+		      << ", width " << xs << "\n";
+		surf->Unlock();
+		return surf;
+	}
 
 	if (version != NULL)
 		*version = lh->version;
@@ -533,99 +602,42 @@ SDL::Surface * LGXpacker::loadLGX(void * ptr, int flags, int * version)
 	//
 	// ************************ VERSION 0 ****************************
 	//
+	const size_t total_pixels = static_cast<size_t>(xs) * static_cast<size_t>(ys);
+	size_t decoded_pixels = 0;
+	auto write_decoded_pixel = [&](unsigned int color) {
+		const size_t y = decoded_pixels / static_cast<size_t>(xs);
+		const size_t x = decoded_pixels % static_cast<size_t>(xs);
+		auto* const row = static_cast<uint8_t*>(ddsd.lpSurface) + y * ddsd.lPitch;
+		writeSurfacePixel(row + x * bytes_per_pixel, bytes_per_pixel, color);
+		++decoded_pixels;
+	};
+
 	if (lh->version == 0) {
-		if (dpitch != 0) {
-			unsigned char * surfPtr = (unsigned char*) ddsd.lpSurface;
-
-			int				x = 0;
-			int				y = 0;
-
-			while (y < ys) {
-				d = *(data++);
-
-				*((unsigned int*)surfPtr) = tab_0[d];
-
-				surfPtr += 4;
-				x++;
-
-				if (x == xs) {
-					x = 0;
-					y++;
-					//surfPtr += dpitch;
-				}
-			}
-		} else { // dpitch=0! cool! :)
-			unsigned short * surfPtr = (unsigned short*) ddsd.lpSurface;
-
-			int		t = xs * ys;
-			int		delta = 0;
-
-			while (delta < t) {
-				d = *(data++);
-				surfPtr[delta++] = tab_0[d];
-			}
+		while (decoded_pixels < total_pixels) {
+			d = *(data++);
+			write_decoded_pixel(tab_0[d]);
 		}
 	}
 	//
 	// ************************ VERSION 1 ****************************
 	//
 	else if (lh->version == 1) {
-		if (dpitch != 0) {
-			unsigned char * surfPtr = (unsigned char*) ddsd.lpSurface;
-
-			int				x = 0;
-			int				y = 0;
-
-			while (y < ys) {
-				d = *(data++);
-
-
-				if (d & 0x8000) {
-					col = tab_1[*(data++)];
-
-
-					for (i = 0; i < (d & 0x7FFF); i++) {
-						*((unsigned int*)surfPtr) = col;
-
-						surfPtr += 4;
-						x++;
-
-						if (x == xs) {
-							x = 0;
-							y++;
-							//surfPtr += dpitch;
-						}
-					}
-				} else {
-					*((unsigned int*)surfPtr) = tab_1[d];
-
-					surfPtr += 4;
-					x++;
-
-					if (x == xs) {
-						x = 0;
-						y++;
-						//surfPtr += dpitch;
-					}
+		while (decoded_pixels < total_pixels) {
+			d = *(data++);
+			if (d & 0x8000) {
+				const int run_length = d & 0x7FFF;
+				const unsigned int color = tab_1[*(data++)];
+				if (run_length == 0) {
+					debug << "LGXpacker::LoadLGX() / Invalid zero-length run\n";
+					break;
 				}
-			}
-		} else { // dptich=0! cool! :)
-			unsigned int * surfPtr = (unsigned int*) ddsd.lpSurface;
-
-			int		t = xs * ys;
-			int		delta = 0;
-
-			while (delta < t) {
-				d = *(data++);
-
-				if (d & 0x8000) {
-					col = tab_1[*(data++)];
-
-					for (i = 0; i < (d & 0x7FFF); i++)
-						surfPtr[delta++] = col;
-				} else
-					surfPtr[delta++] = tab_1[d];
-
+				const size_t pixels_to_write = std::min(
+					static_cast<size_t>(run_length), total_pixels - decoded_pixels);
+				for (size_t i = 0; i < pixels_to_write; ++i) {
+					write_decoded_pixel(color);
+				}
+			} else {
+				write_decoded_pixel(tab_1[d]);
 			}
 		}
 	}
@@ -666,13 +678,19 @@ SDL::Surface * LGXpacker::loadLGX(const char * fic, int flags)
 	}
 
         fh.seekg(0, std::ios::end);
-        int size = fh.tellg();
+        const std::streamoff size = fh.tellg();
+        if (size < static_cast<std::streamoff>(sizeof(LGX_HEADER))) {
+            debug << "LGXpacker::loadLGX() / Fichier trop petit " << fic << "\n";
+            return NULL;
+        }
         fh.seekg(0, std::ios::beg);
-        void * ptr = malloc(size);
+        std::vector<char> data(static_cast<size_t>(size));
+        if (!fh.read(data.data(), size)) {
+            debug << "LGXpacker::loadLGX() / Lecture incomplete " << fic << "\n";
+            return NULL;
+        }
 
-        fh.read(reinterpret_cast<char*>(ptr), size);
-
-	surf = loadLGX(ptr, flags);
+	surf = loadLGX(data.data(), flags);
 
 	return surf;
 
@@ -713,25 +731,47 @@ int LGXpacker::findColor(Pixel rgb)
 
 void LGXpacker::halfTone(SDL::Surface * surf, Rect * r)
 {
+	if (surf == NULL || surf->Get() == NULL || r == NULL)
+		return;
+
 	SDL::SurfaceInfo ddsd;
 
 	if (surf->Lock(&ddsd, DDLOCK_SURFACEMEMORYPTR, NULL) == false)
 		return;
 
-	unsigned int * ptr = (unsigned int*)ddsd.lpSurface;
-        ptr += r->top * surf->Get()->w;
-        for (int line = 0; line < r->bottom - r->top; ++line) {
-            unsigned int* ptrl = ptr + r->left;
-            for (int col = 0; col < r->right - r->left; ++col) {
-                (*ptrl) = 0xFF000000 | ((*ptrl) & 0xFF) >> 1 |
-                          ((((*ptrl) & 0xFF00) >> 1) & 0xFF00) |
-                          ((((*ptrl) & 0xFF0000) >> 1) & 0xFF0000);
-                ++ptrl;
-            }
-            ptr += surf->Get()->w;
-        }
+	SDL_Surface* const sdl_surface = surf->Get();
+	const int bytes_per_pixel = sdl_surface->format->BytesPerPixel;
+	const int top = std::max(0, r->top);
+	const int bottom = std::min(sdl_surface->h, r->bottom);
+	const int left = std::max(0, r->left);
+	const int right = std::min(sdl_surface->w, r->right);
 
-        surf->Unlock();
+	if (bytes_per_pixel < 1 || bytes_per_pixel > 4 || top >= bottom ||
+	    left >= right) {
+		surf->Unlock();
+		return;
+	}
+
+	for (int y = top; y < bottom; ++y) {
+		auto* const row = static_cast<uint8_t*>(ddsd.lpSurface) + y * ddsd.lPitch;
+		for (int x = left; x < right; ++x) {
+			uint8_t* const pixel = row + x * bytes_per_pixel;
+			const uint32_t value = readSurfacePixel(pixel, bytes_per_pixel);
+			uint8_t red;
+			uint8_t green;
+			uint8_t blue;
+			uint8_t alpha;
+			SDL_GetRGBA(value, sdl_surface->format, &red, &green, &blue, &alpha);
+			const uint32_t shaded = SDL_MapRGBA(sdl_surface->format,
+			                                       red / 2,
+			                                       green / 2,
+			                                       blue / 2,
+			                                       alpha);
+			writeSurfacePixel(pixel, bytes_per_pixel, shaded);
+		}
+	}
+
+	surf->Unlock();
 	/*
 	Improvement not working (but should)
 	In the menu and pause menu the screen gets darker (OK)

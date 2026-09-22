@@ -22,6 +22,7 @@
 #include "music_bank.h"
 #include "picture.h"
 #include "picture_bank.h"
+#include "runtime_paths.h"
 #include "scroll.h"
 #include "sound_bank_bb.h"
 #include "txt_data.h"
@@ -38,6 +39,14 @@ HWND WinHandle = NULL;
 static bool safeMode = false;
 
 void ReleaseAll(void) {
+    mbk_niveau.close();
+    mbk_inter.close();
+    mbk_interl.close();
+    sbk_niveau.close();
+    sbk_misc.close();
+    sbk_rpg.close();
+    sbk_bb.close();
+
     if (graphicInstance != NULL) {
         LGXpaker.closePaker();
 
@@ -62,6 +71,7 @@ void ReleaseAll(void) {
     FSOUND_Close();
 
     in.close();
+    SDL_Quit();
 }
 
 void Bug(const char* txt) {
@@ -172,7 +182,8 @@ static bool InitApp(int nCmdShow) {
     //                      Charge la configuration
     //------------------------------------------------------------------
 
-    load_BB3_config(CONFIG_FILE);
+    const std::string config_path = RuntimePaths::resolveString(CONFIG_FILE);
+    load_BB3_config(config_path.c_str());
 
     //------------------------------------------------------------------
     //                      Charge les hi scores
@@ -180,11 +191,12 @@ static bool InitApp(int nCmdShow) {
 
     hi_scores.init();
 
-    if (!hi_scores.load(HISCORES_FILE)) {
+    const std::string high_scores_path = RuntimePaths::resolveString(HISCORES_FILE);
+    if (!hi_scores.load(high_scores_path.c_str())) {
         debug << "Cannot load hi-scores file. Use default hi-scores\n";
         hi_scores.init();
     } else {
-        debug << "Using " << HISCORES_FILE << " as hiscores file\n";
+        debug << "Using " << high_scores_path << " as hiscores file\n";
     }
 
     //------------------------------------------------------------------
@@ -192,13 +204,23 @@ static bool InitApp(int nCmdShow) {
     //------------------------------------------------------------------
 
     if (lang_type == LANG_UK) {
-        if (!loadTxtData("data/uk.dat")) {
-            Bug("Cannot open the file 'data/uk.dat'");
+        const std::string text_path = RuntimePaths::resolveString("data/uk.dat");
+        if (!loadTxtData(text_path.c_str())) {
+            const std::string message =
+                "Cannot open required resource 'data/uk.dat'. Resolved path: " +
+                text_path;
+            debug << message << "\n" << std::flush;
+            Bug(message.c_str());
             return false;
         }
     } else {
-        if (!loadTxtData("data/fr.dat")) {
-            Bug("Cannot open the file 'data/fr.dat'");
+        const std::string text_path = RuntimePaths::resolveString("data/fr.dat");
+        if (!loadTxtData(text_path.c_str())) {
+            const std::string message =
+                "Cannot open required resource 'data/fr.dat'. Resolved path: " +
+                text_path;
+            debug << message << "\n" << std::flush;
+            Bug(message.c_str());
             return false;
         }
     }
@@ -394,22 +416,26 @@ static bool InitApp(int nCmdShow) {
     //                      Chargement des fontes
     //------------------------------------------------------------------
 
-    if (!fnt_menu.load("data/menu.lft", mem_flag)) {
+    const std::string menu_font = RuntimePaths::resolveString("data/menu.lft");
+    if (!fnt_menu.load(menu_font.c_str(), mem_flag)) {
         Bug("Cannot open the file data/menu.lft");
         return false;
     }
 
-    if (!fnt_menus.load("data/menus.lft", mem_flag)) {
+    const std::string menus_font = RuntimePaths::resolveString("data/menus.lft");
+    if (!fnt_menus.load(menus_font.c_str(), mem_flag)) {
         Bug("Cannot open the file data/menus.lft");
         return false;
     }
 
-    if (!fnt_cool.load("data/cool.lft", mem_flag)) {
+    const std::string cool_font = RuntimePaths::resolveString("data/cool.lft");
+    if (!fnt_cool.load(cool_font.c_str(), mem_flag)) {
         Bug("Cannot open the file data/cool.lft");
         return false;
     }
 
-    if (!fnt_rpg.load("data/rpg.lft", mem_flag)) {
+    const std::string rpg_font = RuntimePaths::resolveString("data/rpg.lft");
+    if (!fnt_rpg.load(rpg_font.c_str(), mem_flag)) {
         Bug("Cannot open the file data/rpg.lft");
         return false;
     }
@@ -430,19 +456,23 @@ static bool InitApp(int nCmdShow) {
     //                      Chargement de l'interface
     //------------------------------------------------------------------
 
-    if (!pbk_inter.loadGFX("data/inter.gfx", DDSURF_BEST)) {
+    const std::string interface_gfx = RuntimePaths::resolveString("data/inter.gfx");
+    if (!pbk_inter.loadGFX(interface_gfx.c_str(), DDSURF_BEST)) {
         debug << "Cannot load interface.\n";
         return false;
     } else {
         debug << "Successfully loaded interface.\n";
     }
 
-    if (!mbk_inter.open("data/inter.mbk", false)) {
+    const std::string interface_music = RuntimePaths::resolveString("data/inter.mbk");
+    if (!mbk_inter.open(interface_music.c_str(), false)) {
         debug << "Cannot load interface musics.\n";
         return false;
     }
 
-    if (!mbk_interl.open("data/interl.mbk", true)) {
+    const std::string interface_music_loop =
+        RuntimePaths::resolveString("data/interl.mbk");
+    if (!mbk_interl.open(interface_music_loop.c_str(), true)) {
         debug << "Cannot load interface musics (p2).\n";
         return false;
     }
@@ -461,6 +491,28 @@ static bool InitApp(int nCmdShow) {
 
 #undef main
 int main(int argc, char** argv) {
+    std::string runtime_path_error;
+    if (!RuntimePaths::initialize(runtime_path_error)) {
+        fprintf(stderr, "Blip'n Blop startup failed: %s\n", runtime_path_error.c_str());
+#if _WIN32
+        MessageBoxA(NULL,
+                    runtime_path_error.c_str(),
+                    "Blip'n Blop: missing game data",
+                    MB_OK | MB_ICONERROR);
+#endif
+        return -1;
+    }
+
+    debug << "Application directory: "
+          << RuntimePaths::applicationDirectory().string() << "\n";
+    debug << "Resource root: " << RuntimePaths::resourceRoot().string();
+    if (RuntimePaths::usingLegacyWorkingDirectory()) {
+        debug << " (legacy working-directory fallback)";
+    } else {
+        debug << " (executable-relative)";
+    }
+    debug << "\n" << std::flush;
+
     char lpCmdLine[512] = {0};
     for (int i = 1; i < argc; i++) {
         strcat(lpCmdLine, argv[i]);
@@ -479,6 +531,7 @@ int main(int argc, char** argv) {
     //------------------------------------------------------------------
 
     if (!InitApp(nCmdShow)) {
+        ReleaseAll();
         return -1;
     }
 
@@ -503,7 +556,8 @@ int main(int argc, char** argv) {
 
     // Sauvegarde les hi-scores
     //
-    if (!hi_scores.save(HISCORES_FILE)) {
+    const std::string high_scores_path = RuntimePaths::resolveString(HISCORES_FILE);
+    if (!hi_scores.save(high_scores_path.c_str())) {
         debug << "Cannot save hi-scores\n";
     } else {
         debug << "Saving " << HISCORES_FILE << " as hi-scores file.\n";
@@ -511,7 +565,10 @@ int main(int argc, char** argv) {
 
     // Sauvegarde la configuration
     //
-    save_BB3_config(CONFIG_FILE);
+    const std::string config_path = RuntimePaths::resolveString(CONFIG_FILE);
+    save_BB3_config(config_path.c_str());
+
+    ReleaseAll();
 
     return 0;
 

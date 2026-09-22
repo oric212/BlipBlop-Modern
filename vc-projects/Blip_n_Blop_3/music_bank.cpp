@@ -9,6 +9,7 @@
 #include "ben_debug.h"
 #include "config.h"
 #include "fmod__errors.h"
+#include "runtime_paths.h"
 
 #define TYPE_MOD 0
 #define TYPE_MP3 1
@@ -34,62 +35,82 @@ bool MusicBank::open(const char* file, bool loop) {
         return false;
     }
 
-    musics_.resize(nb_musics);
+    std::vector<std::unique_ptr<Music>> loaded_musics;
+    loaded_musics.reserve(nb_musics);
 
     for (int i = 0; i < nb_musics; i++) {
         int type;
         f >> type;
         std::string fname;
         f >> fname;
-        std::replace(fname.begin(), fname.end(), '\\', '/');
+        if (!f) {
+            debug << "MusicBank::load() -> Fichier " << file
+                  << " tronque a l'entree " << i << "\n";
+            return false;
+        }
+        fname = RuntimePaths::resolveString(fname);
 
-        if (type == TYPE_MOD) {
-            musics_[i].reset(new ModMusic(fname));
-        } else {  // TYPE_MP3
-            musics_[i].reset(new Mp3Music(fname, loop));
+        try {
+            if (type == TYPE_MOD) {
+                loaded_musics.push_back(std::make_unique<ModMusic>(fname));
+            } else if (type == TYPE_MP3) {
+                loaded_musics.push_back(
+                    std::make_unique<Mp3Music>(fname, loop));
+            } else {
+                debug << "MusicBank::load() -> Type de musique inconnu "
+                      << type << " dans " << file << "\n";
+                return false;
+            }
+        } catch (const std::exception& error) {
+            debug << "MusicBank::load() -> " << error.what() << " pour "
+                  << fname << "\n";
+            return false;
         }
     }
 
-    f.close();
+    musics_ = std::move(loaded_musics);
+    debug << "Loaded " << musics_.size() << " music(s) from " << file
+          << "\n";
     return true;
 }
 
 void MusicBank::play(int n) {
     if (!music_on) return;
 
-    if (n < 0 || n >= musics_.size()) {
+    if (n < 0 || static_cast<size_t>(n) >= musics_.size()) {
         debug << "MusicBank::play() -> Tentative de jouer une musique non "
                  "chargée : "
               << n << "\n";
         return;
     }
 
+    if (!musics_[n]) return;
     musics_[n]->Play();
 }
 
 void MusicBank::stop(int n) {
     if (!music_on) return;
 
-    if (n < 0 || n >= musics_.size()) {
+    if (n < 0 || static_cast<size_t>(n) >= musics_.size()) {
         debug << "MusicBank::stop() -> Tentative de stoper une musique non "
                  "chargée : "
               << n << "\n";
         return;
     }
 
-    musics_[n]->Stop();
+    if (musics_[n]) musics_[n]->Stop();
 }
 
 void MusicBank::stop() {
-    for (int i = 0; i < musics_.size(); i++) {
-        stop(i);
+    for (const auto& music : musics_) {
+        if (music) music->Stop();
     }
 }
 
 void MusicBank::setVol(int v) {
     if (!music_on) return;
 
-    for (int i = 0; i < musics_.size(); i++) {
-        musics_[i]->set_volume(v);
+    for (const auto& music : musics_) {
+        if (music) music->set_volume(v);
     }
 }
