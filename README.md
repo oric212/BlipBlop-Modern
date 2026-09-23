@@ -18,6 +18,8 @@ Verified local build and deployment commands are maintained in [PROG.md](PROG.md
 
 ## Modern display support
 
+![Blip & Blop Modern gameplay](https://github.com/oric212/BlipBlop-Modern/releases/download/v1.0.0/Screenshot_1.png)
+
 The game still renders one complete 640x480 frame. The presentation layer scales that final frame to the largest centered 4:3 rectangle that fits the actual drawable area, with black pillarboxing or letterboxing where necessary. It does not expand the visible world or convert individual artwork and gameplay coordinates to the desktop resolution.
 
 Nearest-neighbor sampling keeps the original pixel-art character instead of smoothing it. Scaling is allowed to be fractional so 4:3 uses as much of the display as possible. For example, a 3840x2160 (4K) display presents the game as 2880x2160 at 4.5x, centered with 480-pixel black bars on the left and right. This preserves the original assumptions and composition, works automatically at modern resolutions, and avoids rewriting the UI, camera, gameplay coordinates, or artwork. It does not create additional graphical detail, fractional nearest-neighbor output is not pixel-perfect integer scaling, and widescreen displays retain unused side space. Strict integer scaling is not currently offered.
