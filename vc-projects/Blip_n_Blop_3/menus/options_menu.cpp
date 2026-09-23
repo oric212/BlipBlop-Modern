@@ -8,14 +8,18 @@ int OptionsMenu::ProcessEvent() {
     MenuType next = MenuType(active_menu_->ProcessEvent());
     switch (next) {
         case MenuType::Main:
+            active_menu_ = &options_menu_;
             return MenuType::Main;
         case MenuType::Options:
+            if (active_menu_ != &options_menu_) in.syncMenuTransition();
             active_menu_ = &options_menu_;
             break;
         case MenuType::Keys_1:
+            if (active_menu_ != &p1_menu_) in.syncMenuTransition();
             active_menu_ = &p1_menu_;
             break;
         case MenuType::Keys_2:
+            if (active_menu_ != &p2_menu_) in.syncMenuTransition();
             active_menu_ = &p2_menu_;
             break;
     }

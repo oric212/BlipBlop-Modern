@@ -15,6 +15,8 @@
 void TitleScreen::start() {
     start_music_on = music_on;
     start_sound_on = sound_on;
+    active_menu_ = &first_menu_;
+    in.syncMenuTransition();
 }
 
 int TitleScreen::update() {
@@ -24,12 +26,18 @@ int TitleScreen::update() {
 
     switch (next) {
         case MenuType::Main:
+            if (active_menu_ != &first_menu_) in.syncMenuTransition();
             active_menu_ = &first_menu_;
             break;
         case MenuType::Start:
+            if (active_menu_ != &start_menu_) in.syncMenuTransition();
             active_menu_ = &start_menu_;
             break;
         case MenuType::Options:
+            if (active_menu_ != &options_menu_) {
+                options_menu_.reset();
+                in.syncMenuTransition();
+            }
             active_menu_ = &options_menu_;
             break;
         case MenuType::Game_1:

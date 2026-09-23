@@ -459,6 +459,7 @@ bool Game::joueNiveau(const char* nom_niveau, int type) {
 
     // Update quelques trucs
     //
+    in.discardPausePress();
     updateEvents();
     updateAll();
 
@@ -813,7 +814,10 @@ bool Game::chargeNiveau(const char* nom_niveau) {
         const unsigned char tmp_byte = *(
             reinterpret_cast<const unsigned char*>(&ficevent) +
             offsetof(FICEVENT, tmp));
-        if (tmp_byte > 1) return false;
+        // Old level files leave this byte as 0xCD for event types that never
+        // use tmp. Only generator events consume it as a bool.
+        if (ficevent.event_id == EVENTID_ENNEMI_GENERATOR && tmp_byte > 1)
+            return false;
 
         switch (ficevent.event_id) {
             case EVENTID_ENNEMI: {
@@ -1790,6 +1794,7 @@ void Game::updateMenu() {
         // primSurface->Flip(NULL, DDFLIP_WAIT );
 
         in.waitClean();
+        in.syncMenuTransition();
 
         while (!(r = menu.Update()) && !app_killed) {
             manageMsg();
@@ -2801,6 +2806,10 @@ void Game::go() {
                 select.draw();
                 DDFlipV();
             }
+
+            if (app_killed) break;
+
+            in.discardPausePress();
 
             drawLoading();
             DDFlipV();

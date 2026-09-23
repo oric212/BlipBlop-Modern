@@ -88,6 +88,7 @@ void Input::clearState()
 	menu_horizontal_direction = 0;
 	menu_confirm_held = false;
 	menu_back_held = false;
+	pause_pressed = false;
 }
 
 int Input::joystickSlot(SDL_JoystickID instance_id) const
@@ -743,6 +744,25 @@ bool Input::pausePressed()
 	const bool pressed = pause_pressed;
 	pause_pressed = false;
 	return pressed;
+}
+
+void Input::syncMenuTransition()
+{
+	// A held confirm/direction should not act on the newly opened screen.
+	const bool up = scanKey(DIK_UP) || scanAlias(ALIAS_P1_UP);
+	const bool down = scanKey(DIK_DOWN) || scanAlias(ALIAS_P1_DOWN);
+	menu_direction = up == down ? 0 : (up ? -1 : 1);
+	const bool left = scanKey(DIK_LEFT) || scanAlias(ALIAS_P1_LEFT);
+	const bool right = scanKey(DIK_RIGHT) || scanAlias(ALIAS_P1_RIGHT);
+	menu_horizontal_direction = left == right ? 0 : (left ? -1 : 1);
+	menu_direction_started = menu_direction_repeated = SDL_GetTicks();
+	menu_horizontal_started = menu_horizontal_repeated = SDL_GetTicks();
+	menu_confirm_held = scanKey(DIK_RETURN) ||
+	                    scanKey(getAlias(ALIAS_P1_FIRE)) || menuConfirmPressed();
+	const DIJOYSTATE* state = controllerForPlayer(0);
+	menu_back_held = state && SDL_GameControllerGetButton(
+	    state->controller, SDL_CONTROLLER_BUTTON_B);
+	pause_pressed = false;
 }
 
 //-----------------------------------------------------------------------------

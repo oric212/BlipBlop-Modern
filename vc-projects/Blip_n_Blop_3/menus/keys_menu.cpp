@@ -71,7 +71,7 @@ int KeysMenu::ProcessEvent() {
         }
         if (in.menuConfirmActionPressed(items_.focused() == items_.size() - 1)) {
             if (items_.focused() == items_.size() - 1) {
-                return MenuType::Main;
+                return MenuType::Options;
             }
             EditKey();
         }

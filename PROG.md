@@ -239,10 +239,22 @@ The full MSVC `/analyze` rebuild also reported a concrete `showPE` post-level re
 
 VS2022 Debug x64 and Release x64 builds succeeded. The RelWithDebInfo AddressSanitizer build succeeded and launched through SDL/audio/interface initialization and the first presentation, but did **not** reach gameplay; it cannot establish first-level or transition safety. A deployed Release startup remained alive for eight seconds with executable-relative data and normal initialization logged. The deployed executable SHA-256 matched the final Release binary. `dumpbin` showed the executable imports SDL2/SDL2_mixer and the expected MSVC runtime, and the mixer imports the packaged codec DLLs. Neither manual gameplay stress nor a sustained memory-growth study was completed; the user will test gameplay later. Legacy analyzer warnings outside the touched/runtime-relevant paths are not being mass-silenced.
 
+## v1.0.0 release-blocker regression fix
+
+The first published v1.0.0 build could return directly to Game Over when starting a game. The Prompt 8C level parser rejected the `tmp` bool byte on **every** event, but original level files leave that unused byte as `0xCD` on most event types. Only enemy-generator events consume `tmp`; validation is now limited to those events. All 12 shipped levels were checked for valid generator `tmp` bytes. The first level now logs `Successfully loaded all level files` and `Now getting into game loop`, whereas the prior release log stopped before those lines.
+
+Menu/input transition state also needed explicit boundaries. Controller Start could remain queued from a menu and trigger a pause on entering gameplay; focus-loss state clearing did not clear that queued press. The menu repeat and confirm/back edge state could carry into a different screen. These transient states are now synchronized at menu transitions and discarded before gameplay. The title menu now resets to its root after a game, the Options menu resets on re-entry, and Controls/Return goes back to Options rather than unexpectedly jumping to the root menu. These are focused state corrections, not gameplay-control changes.
+
+The intro theme is intentionally also the title-menu theme (`data/theme.zik` in `interl.mbk`). At the user's clarified request, it continues after either normal intro completion or an intro skip; `jouePartie` stops it on game start, and the level/briefing music then takes over. No music change was needed once the level-load failure was fixed.
+
+VS2022 Debug x64 and Release x64 built successfully and `deploy` refreshed `game-build`; the deployed EXE hash matched Release. In an interactive run, the user reported normal intro completion, intro skip, menu navigation, starting a new game, several minutes of actual gameplay, keyboard and controller movement/actions, pause/resume, return/menu transitions, and music transitions working. The runtime log confirms the first level fully loaded, entered the game loop, and started level audio. This is meaningful coverage of the release blockers, not exhaustive testing of every level, device, or edge case.
+
+A separate eight-second standalone launch from an unrelated `%TEMP%` working directory stayed alive and logged `game-build` as its executable-relative resource root, with SDL audio codecs available; the smoke harness then forcibly stopped it, so that run does not verify a clean exit.
+
 ## Current task
 
-Prompt 8C code and build work is complete. Gameplay-level sanitizer coverage and repeated manual transitions remain unverified.
+The release-blocking v1.0.0 regressions are fixed and interactively verified. Final standalone packaging and republication are in progress.
 
 ## Next task
 
-Complete the deferred manual gameplay/stress checks before treating runtime stability as verified. Prompt 9 packaging/release work remains deferred.
+Prompt 9 remains deferred; broader level-by-level gameplay, ASan gameplay coverage, and long-duration stress testing remain future verification work.

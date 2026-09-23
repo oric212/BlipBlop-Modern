@@ -20,9 +20,14 @@ int MenuGame::Update() {
         case MenuType::Exit:
             return 2;
         case MenuType::Main:
+            if (active_ != &pause_menu_) in.syncMenuTransition();
             active_ = &pause_menu_;
             break;
         case MenuType::Options:
+            if (active_ != &options_menu_) {
+                options_menu_.reset();
+                in.syncMenuTransition();
+            }
             active_ = &options_menu_;
     }
     return 0;

@@ -8,6 +8,7 @@
 class OptionsMenu : public AbstractMenu {
    public:
     OptionsMenu() : p1_menu_(1), p2_menu_(2), active_menu_(&options_menu_) {}
+    void reset() { active_menu_ = &options_menu_; }
     void Draw(SDL::Surface* surf) const override { active_menu_->Draw(surf); }
     int ProcessEvent() override;
 

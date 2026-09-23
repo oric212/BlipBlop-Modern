@@ -228,6 +228,8 @@ public:
 	bool menuConfirmActionPressed(bool allow_controller = true);
 	bool menuBackPressed();
 	bool pausePressed();
+	void syncMenuTransition();
+	void discardPausePress() { pause_pressed = false; }
 	InputDevice lastInputDevice() const { return last_input_device; }
 	inline unsigned int getAlias(int n) const
 	{
