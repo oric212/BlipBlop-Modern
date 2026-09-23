@@ -229,10 +229,20 @@ The build ideas are useful and informed this baseline, but should not be copied 
 - No SDL-recognized controller was available for physical mapping or hot-plug verification; only raw-device enumeration was exercised.
 - There is no automated test suite or current CI workflow.
 
+## Prompt 8C deferred safety pass
+
+The LGX memory decoder now receives the actual blob length from GFX/font callers, validates its header, dimensions and compressed runs, and rejects truncated streams without returning a partially decoded surface. Font loading checks glyph lengths against file bounds and commits a replacement only after all glyphs decode. Picture-bank restore similarly stages replacement surfaces before changing the live bank. Level loading checks the fixed file layout, bounded counts, names, decor indices, platform/wall reads and event records; partially populated level arrays are initialized for safe cleanup, and a failed level load now invokes that cleanup. The level-list count off-by-one and an initially uninitialized list value were fixed. These checks preserve all 12 shipped level layouts and eight shipped fonts, including original fonts whose height field is zero.
+
+Confirmed deferred defects: the precache loop used `fseek`'s return code as a file length and therefore never read the intended data; it now reads the file in bounded 8 KiB chunks. The old video-buffer fallback loop's initial condition was false, so its allocation body was unreachable; it has been reduced to the same effective SDL system-buffer path. Laser directions 16/17 map to an unhandled half-direction 8, which could leave collision coordinates uninitialized; that path is now explicitly non-colliding. A HUD weapon-image switch also had a real uninitialized pointer path for an invalid weapon ID and now returns without drawing.
+
+The full MSVC `/analyze` rebuild also reported a concrete `showPE` post-level results path where player-display flags and coordinates could be read without assignment if neither player branch ran. Only those locals were initialized. The final analysis build succeeded with 247 warnings; the `showPE` `C6001`/`C6011` and precache `C6262` warnings were absent. A `C6054` warning remains at the level-name copy because the analyzer does not establish the preceding NUL check in `readName`; the check is present, but malformed-level runtime testing remains incomplete. Other reported class-field `C26495` warnings were not mass-initialized: several belong to legacy initialization protocols and need separate path-specific evidence. The prior precache 64 KiB stack warning was removed by using an 8 KiB read chunk.
+
+VS2022 Debug x64 and Release x64 builds succeeded. The RelWithDebInfo AddressSanitizer build succeeded and launched through SDL/audio/interface initialization and the first presentation, but did **not** reach gameplay; it cannot establish first-level or transition safety. A deployed Release startup remained alive for eight seconds with executable-relative data and normal initialization logged. The deployed executable SHA-256 matched the final Release binary. `dumpbin` showed the executable imports SDL2/SDL2_mixer and the expected MSVC runtime, and the mixer imports the packaged codec DLLs. Neither manual gameplay stress nor a sustained memory-growth study was completed; the user will test gameplay later. Legacy analyzer warnings outside the touched/runtime-relevant paths are not being mass-silenced.
+
 ## Current task
 
-Prompt 8B follow-up is implemented and verified for clean fullscreen startup, live submenu controller actions, and intro skipping. A manual toggle-exit-restart display round trip awaits confirmation; controlled saved-value startup tests passed.
+Prompt 8C code and build work is complete. Gameplay-level sanitizer coverage and repeated manual transitions remain unverified.
 
 ## Next task
 
-Prompt 8C has not been started. Prompt 9 packaging/release work remains deferred.
+Complete the deferred manual gameplay/stress checks before treating runtime stability as verified. Prompt 9 packaging/release work remains deferred.

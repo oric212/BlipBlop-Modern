@@ -373,38 +373,16 @@ static bool InitApp(int nCmdShow) {
     //                      Scroll buffers
     //------------------------------------------------------------------
 
-    for (int width_off = 0; width_off >= 200; width_off += 100) {
-        debug << "Creating video buffer of size "
-              << (WANTED_VBUFFER_WIDE - width_off) << "...";
-        videoA =
-            DDCreateSurface(WANTED_VBUFFER_WIDE - width_off, 480, DDSURF_VIDEO);
-
-        if (videoA) {
-            debug << "Ok\n";
-            vbuffer_wide = WANTED_VBUFFER_WIDE - width_off;
-            break;
-        }
-
-        debug << "Failed\n";
-    }
-
+    // SDL surfaces are system-memory surfaces; the old video-memory retry loop
+    // never ran (its initial condition was false).
+    videoA = DDCreateSurface(WANTED_VBUFFER_WIDE, 480, DDSURF_SYSTEM);
     if (videoA == NULL) {
-        videoA = DDCreateSurface(WANTED_VBUFFER_WIDE, 480, DDSURF_SYSTEM);
-
-        if (videoA == NULL) {
-            // Laughing in 2019
-            Bug("Not enough memory. Blip'n Blop needs 32 Mo of free "
-                "memory. Try to close all other applications and "
-                "launch Blip'n Blop again.");
-            return false;
-        }
-
-        debug << "Cannot create video buffer. Use system buffer "
-                 "instead.\n";
-        vbuffer_wide = WANTED_VBUFFER_WIDE;
-        mem_flag = DDSURF_SYSTEM;
-        video_buffer_on = false;
+        Bug("Cannot create scroll buffer.");
+        return false;
     }
+    vbuffer_wide = WANTED_VBUFFER_WIDE;
+    mem_flag = DDSURF_SYSTEM;
+    video_buffer_on = false;
 
     //------------------------------------------------------------------
     //                      Chargement des fontes

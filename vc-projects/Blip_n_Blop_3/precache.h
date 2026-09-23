@@ -3,23 +3,16 @@
 #define _Precache_
 
 #include <stdio.h>
+#include <array>
 
 inline void Precache(const char * nf)
 {
 	FILE * f = fopen(nf, "rb");
 
-	if (f != NULL) {
-		int len = fseek(f, 0, SEEK_END);
-
-		if (len > 0) {
-			fseek(f, 0, SEEK_SET);
-			void * ptr = malloc(len);
-			fread(ptr, len, 1, f);
-			free(ptr);
-		}
-
-		fclose(f);
-	}
+	if (f == NULL) return;
+	std::array<unsigned char, 8 * 1024> buffer;
+	while (fread(buffer.data(), 1, buffer.size(), f) == buffer.size()) {}
+	fclose(f);
 
 }
 

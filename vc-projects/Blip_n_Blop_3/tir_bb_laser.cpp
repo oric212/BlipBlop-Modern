@@ -32,6 +32,12 @@ void TirBBLaser::setDir(int d)
 	base = hauteur = largeur = 0;
 
 	dir /= 2;
+	if (dir < 0 || dir > 7) {
+		col_on = false;
+		ss_etape = 2;
+		return;
+	}
+	col_on = true;
 
 
 	int nx = x;
@@ -304,6 +310,8 @@ bool TirBBLaser::collision(const Sprite * s) const
 			y_laser2 = -(xe2 - x) + y;
 
 			break;
+		default:
+			return false;
 	}
 
 	return ((y_laser1 > ye1 && y_laser1 < ye2) || (y_laser2 > ye1 && y_laser2 < ye2));

@@ -79,6 +79,8 @@ class HUD {
             case ID_LASER:
                 pic = pbk_misc[10];
                 break;
+            default:
+                return;
         }
 
         int x = (location == Location::Left) ? 135 : 510;

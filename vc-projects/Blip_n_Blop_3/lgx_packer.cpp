@@ -539,31 +539,32 @@ int LGXpacker::createLGX_1(HDC hdc, int xs, int ys, void * & ptr)
 //							   mémoire précisé
 //-----------------------------------------------------------------------------
 
-SDL::Surface * LGXpacker::loadLGX(void * ptr, int flags, int * version)
+SDL::Surface * LGXpacker::loadLGX(const void * ptr, size_t length, int flags, int * version)
 {
-	if (tab_0 == NULL || tab_1 == NULL) {
+	if (tab_0 == NULL || tab_1 == NULL || ptr == NULL || length < sizeof(LGX_HEADER)) {
 		debug << "LGXpaker::loadLGX() - LGXpaker non initialisé!\n";
 		return NULL;
 	}
-
-	SDL::Surface *	surf;
-
-	LGX_HEADER *	lh = (LGX_HEADER *) ptr;
+	LGX_HEADER header;
+	std::memcpy(&header, ptr, sizeof(header));
 
 
 	// On vérifie qu'il s'agit bien d'un fichier LGX
 
-	if (lh->id[0] != 'L' || lh->id[1] != 'G' || lh->id[2] != 'X') {
+	if (header.id[0] != 'L' || header.id[1] != 'G' || header.id[2] != 'X' ||
+	    (header.version != 0 && header.version != 1) || header.depth != 16 ||
+	    header.xsize == 0 || header.ysize == 0 ||
+	    static_cast<size_t>(header.xsize) * header.ysize > 4096u * 4096u) {
 		debug << "LGXpacker::LoadLGX() / Format de fichier erroné!\n";
 		return NULL;
 	}
 
-	int		xs = lh->xsize;
-	int		ys = lh->ysize;
+	const int xs = header.xsize;
+	const int ys = header.ysize;
 
 	// On crée la surface correspondante
 
-	surf = DDCreateSurface(xs, ys, flags);
+	SDL::Surface *surf = DDCreateSurface(xs, ys, flags);
 	if (surf == NULL) {
 		debug << "LGXpacker::LoadLGX() / Ne peut pas créer la surface\n";
 		return NULL;
@@ -576,14 +577,17 @@ SDL::Surface * LGXpacker::loadLGX(void * ptr, int flags, int * version)
 
 	if (surf->Lock(&ddsd, DDLOCK_WAIT | DDLOCK_WRITEONLY | DDLOCK_SURFACEMEMORYPTR, NULL) != DD_OK) {
 		debug << "LGXpacker::LoadLGX() / Impossible d'obtenir l'adresse de la surface\n";
-		return surf;
+		surf->Release();
+		return NULL;
 	}
-
-
-	// data pointe sur les données du fichier (après le header)
-	unsigned short * data = (unsigned short *)((char *) ptr + sizeof(LGX_HEADER));
-
-	unsigned short	d;
+	const auto *data = static_cast<const uint8_t *>(ptr);
+	size_t offset = sizeof(LGX_HEADER);
+	auto read_word = [&](uint16_t& value) {
+		if (length - offset < sizeof(value)) return false;
+		std::memcpy(&value, data + offset, sizeof(value));
+		offset += sizeof(value);
+		return true;
+	};
 
 	SDL_Surface* const sdl_surface = surf->Get();
 	const int bytes_per_pixel = sdl_surface->format->BytesPerPixel;
@@ -593,11 +597,12 @@ SDL::Surface * LGXpacker::loadLGX(void * ptr, int flags, int * version)
 		      << bytes_per_pixel << " bytes per pixel, pitch " << ddsd.lPitch
 		      << ", width " << xs << "\n";
 		surf->Unlock();
-		return surf;
+		surf->Release();
+		return NULL;
 	}
 
 	if (version != NULL)
-		*version = lh->version;
+		*version = header.version;
 
 	//
 	// ************************ VERSION 0 ****************************
@@ -612,29 +617,32 @@ SDL::Surface * LGXpacker::loadLGX(void * ptr, int flags, int * version)
 		++decoded_pixels;
 	};
 
-	if (lh->version == 0) {
+	bool valid = true;
+	if (header.version == 0) {
 		while (decoded_pixels < total_pixels) {
-			d = *(data++);
+			uint16_t d;
+			if (!read_word(d)) { valid = false; break; }
 			write_decoded_pixel(tab_0[d]);
 		}
 	}
 	//
 	// ************************ VERSION 1 ****************************
 	//
-	else if (lh->version == 1) {
+	else if (header.version == 1) {
 		while (decoded_pixels < total_pixels) {
-			d = *(data++);
+			uint16_t d;
+			if (!read_word(d)) { valid = false; break; }
 			if (d & 0x8000) {
 				const int run_length = d & 0x7FFF;
-				const unsigned int color = tab_1[*(data++)];
-				if (run_length == 0) {
-					debug << "LGXpacker::LoadLGX() / Invalid zero-length run\n";
+				uint16_t color_word;
+				if (run_length == 0 ||
+				    static_cast<size_t>(run_length) > total_pixels - decoded_pixels ||
+				    !read_word(color_word) || color_word >= 0x8000) {
+					valid = false;
 					break;
 				}
-				const size_t pixels_to_write = std::min(
-					static_cast<size_t>(run_length), total_pixels - decoded_pixels);
-				for (size_t i = 0; i < pixels_to_write; ++i) {
-					write_decoded_pixel(color);
+				for (int i = 0; i < run_length; ++i) {
+					write_decoded_pixel(tab_1[color_word]);
 				}
 			} else {
 				write_decoded_pixel(tab_1[d]);
@@ -642,16 +650,11 @@ SDL::Surface * LGXpacker::loadLGX(void * ptr, int flags, int * version)
 		}
 	}
 	surf->Unlock();
-
-
-	static int counter = 0;
-	char buf[128];
-	sprintf(buf, "test/%d.bmp",counter);
-	/*if (counter >200&&counter<250)
-		SDL_SaveBMP(surf->Get(), buf);*/
-
-	counter++;
-
+	if (!valid) {
+		debug << "LGXpacker::loadLGX() / Truncated or invalid pixel stream\n";
+		surf->Release();
+		return NULL;
+	}
 	return surf;
 
 
@@ -690,7 +693,7 @@ SDL::Surface * LGXpacker::loadLGX(const char * fic, int flags)
             return NULL;
         }
 
-	surf = loadLGX(data.data(), flags);
+	surf = loadLGX(data.data(), data.size(), flags);
 
 	return surf;
 

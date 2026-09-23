@@ -76,7 +76,7 @@ bool PictureBank::loadGFX(const char* file, int flag, bool trans) {
             return false;
         }
 
-        SDL::Surface* surface = LGXpaker.loadLGX(bytes.data(), flag, &version);
+        SDL::Surface* surface = LGXpaker.loadLGX(bytes.data(), bytes.size(), flag, &version);
         if (surface == nullptr) {
             debug << "PictureBank::loadGFX() - cannot decode entry " << index
                   << " in " << file << "\n";
@@ -118,6 +118,16 @@ bool PictureBank::restoreAll() {
         return false;
     }
 
+    auto release_surface = [](SDL::Surface* surface) {
+        if (surface) surface->Release();
+    };
+    using PendingSurface = std::unique_ptr<SDL::Surface, decltype(release_surface)>;
+    std::vector<PendingSurface> decoded;
+    std::vector<int> versions;
+    std::vector<std::pair<int, int>> spots;
+    decoded.reserve(static_cast<size_t>(picture_count));
+    versions.reserve(static_cast<size_t>(picture_count));
+    spots.reserve(static_cast<size_t>(picture_count));
     for (int index = 0; index < picture_count; ++index) {
         int xspot = 0;
         int yspot = 0;
@@ -130,21 +140,28 @@ bool PictureBank::restoreAll() {
         }
 
         SDL::Surface* surface =
-            LGXpaker.loadLGX(bytes.data(), flag_fic, &version);
+            LGXpaker.loadLGX(bytes.data(), bytes.size(), flag_fic, &version);
         if (surface == nullptr) {
             debug << "PictureBank::restoreAll() - cannot decode entry "
                   << index << " in " << filename_ << "\n";
             return false;
         }
 
+        decoded.emplace_back(surface, release_surface);
+        versions.push_back(version);
+        spots.emplace_back(xspot, yspot);
+    }
+    for (int index = 0; index < picture_count; ++index) {
+        if (!tab_[index]) return false;
+    }
+    for (int index = 0; index < picture_count; ++index) {
         SDL::Surface* old_surface = tab_[index]->Surf();
-        old_surface->Release();
-        tab_[index]->SetSpot(xspot, yspot);
-        tab_[index]->SetSurface(surface);
-        if (trans_fic) {
-            tab_[index]->SetColorKey(version == 1 ? RGB(250, 206, 152)
-                                                  : RGB(250, 214, 152));
-        }
+        if (old_surface) old_surface->Release();
+        tab_[index]->SetSpot(spots[index].first, spots[index].second);
+        tab_[index]->SetSurface(decoded[index].release());
+        if (trans_fic)
+            tab_[index]->SetColorKey(versions[index] == 1 ? RGB(250, 206, 152)
+                                                         : RGB(250, 214, 152));
     }
     return true;
 }

@@ -27,6 +27,7 @@
 #include <fstream>
 #include <fcntl.h>
 #include <stdio.h>
+#include <vector>
 
 #include "lgx_packer.h"
 #include "ben_debug.h"
@@ -37,40 +38,42 @@
 
 bool Fonte::load(const char * fic, int flags)
 {
-        pictab_.clear();
-        std::ifstream fh(fic, std::ios::binary);
+        std::ifstream fh(fic, std::ios::binary | std::ios::ate);
 
 	if (!fh.good()) {
 		debug << "Fonte::load->Ne peut pas ouvrir " << fic << "\n";
 		return false;
 	}
-
-        fh.read(reinterpret_cast<char*>(&h), sizeof(h));
-        fh.read(reinterpret_cast<char*>(&spc), sizeof(spc));
-
-
-        pictab_.resize(256);
+	const std::streamoff file_size = fh.tellg();
+	if (file_size < static_cast<std::streamoff>(2 * sizeof(int) + 255 * sizeof(int)))
+		return false;
+	fh.seekg(0);
+	int loaded_h = 0;
+	int loaded_spc = 0;
+	if (!fh.read(reinterpret_cast<char*>(&loaded_h), sizeof(loaded_h)) ||
+	    !fh.read(reinterpret_cast<char*>(&loaded_spc), sizeof(loaded_spc)))
+		return false;
+	std::vector<std::unique_ptr<Picture>> loaded(256);
         for (int i = 1; i < 256; i++) {
-            int taille;
-            fh.read(reinterpret_cast<char*>(&taille), sizeof(taille));
+            int taille = 0;
+            if (!fh.read(reinterpret_cast<char*>(&taille), sizeof(taille)) || taille < 0)
+                return false;
 
             if (taille == 0) {
                 continue;
             }
 
-            void* ptr = malloc(taille);
-
-            fh.read(reinterpret_cast<char*>(ptr), taille);
-
-            SDL::Surface* surf = LGXpaker.loadLGX(ptr, flags);
-
-            free(ptr);
-
-            pictab_[i] = std::make_unique<Picture>();
-            pictab_[i]->SetSurface(surf);
-            pictab_[i]->SetSpot(0, 0);
+			if (taille < static_cast<int>(sizeof(LGX_HEADER)) ||
+			    static_cast<std::streamoff>(taille) > file_size - fh.tellg()) return false;
+			std::vector<char> bytes(static_cast<size_t>(taille));
+			if (!fh.read(bytes.data(), taille)) return false;
+			SDL::Surface* surf = LGXpaker.loadLGX(bytes.data(), bytes.size(), flags);
+			if (!surf) return false;
+			loaded[i] = std::make_unique<Picture>();
+			loaded[i]->SetSurface(surf);
+			loaded[i]->SetSpot(0, 0);
             //		pictab[i]->SetColorKey( RGB( 250, 212, 152));
-            pictab_[i]->SetColorKey(RGB( 246, 205, 148));
+            loaded[i]->SetColorKey(RGB( 246, 205, 148));
             //pictab[i]->SetColorKey(RGB(250, 206, 152));
 
             /*static int test_i = 1;
@@ -81,6 +84,9 @@ bool Fonte::load(const char * fic, int flags)
 
         }
 
+        pictab_ = std::move(loaded);
+        h = loaded_h;
+        spc = loaded_spc;
         filename_ = fic;
         flag_fic = flags;
         return true;
@@ -210,11 +216,11 @@ void Fonte::printMW(SDL::Surface * surf, int x, int y, const char * srctxt, int 
 	curx = x;
 	cury = y;
 
-	char * txt = new char[strlen(srctxt) + 1];
+	std::vector<char> txt(strlen(srctxt) + 1);
 	char * token;
 
-	strcpy(txt, srctxt);
-	token = strtok(txt, delim);
+	strcpy(txt.data(), srctxt);
+	token = strtok(txt.data(), delim);
 
 	while (token != NULL) {
 		nx = width(token);
@@ -263,45 +269,9 @@ bool Fonte::restoreAll()
 {
 	if (filename_.empty())
 		return true;
-
-	SDL::Surface *	surf;
-
-	int			taille;
-	void *		ptr;
-
-
-        std::fstream fh(filename_.c_str(), std::ios::binary);
-
-	if (!fh.good()) {
-		debug << "Fonte::restoreAll()->Ne peut pas ouvrir " << filename_ << "\n";
-		return false;
-	}
-
-
-        fh.read(reinterpret_cast<char*>(&h), sizeof(h));
-        fh.read(reinterpret_cast<char*>(&spc), sizeof(spc));
-
-
-	for (int i = 1; i < 256; i++) {
-
-                fh.read(reinterpret_cast<char*>(&taille), sizeof(taille));
-
-		if (taille == 0) {
-			continue;
-		}
-
-		ptr = malloc(taille);
-
-                fh.read(reinterpret_cast<char*>(ptr), taille);
-
-		surf = LGXpaker.loadLGX(ptr, flag_fic);
-
-		free(ptr);
-
-		pictab_[i]->SetSurface(surf);
-		pictab_[i]->SetSpot(0, 0);
-		pictab_[i]->SetColorKey(RGB(250, 206, 152));
-	}
-
+	const std::string file = filename_;
+	if (!load(file.c_str(), flag_fic)) return false;
+	for (auto& picture : pictab_)
+		if (picture) picture->SetColorKey(RGB(250, 206, 152));
 	return true;
 }

@@ -30,6 +30,7 @@
 
 #include "graphics.h"
 #include "dd_gfx.h"
+#include <cstddef>
 
 
 //-----------------------------------------------------------------------------
@@ -110,7 +111,7 @@ public:
 	int createLGX_1(HDC hdc, int xs, int ys, void * & ptr);
 #endif
 
-	SDL::Surface * loadLGX(void * ptr, int flag = DDSURF_BEST, int * version = NULL);
+	SDL::Surface * loadLGX(const void * ptr, size_t length, int flag = DDSURF_BEST, int * version = NULL);
 	SDL::Surface * loadLGX(const char * fic, int flag = DDSURF_BEST);
 
 	int	findColor(Pixel rgb);

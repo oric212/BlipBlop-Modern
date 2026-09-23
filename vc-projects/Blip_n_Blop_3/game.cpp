@@ -23,8 +23,11 @@
 #include <fcntl.h>
 #include <malloc.h>
 #include <cstdio>
+#include <cstdint>
+#include <cstddef>
 #include <cstring>
 #include <fstream>
+#include <vector>
 
 #include "ben_debug.h"
 #include "ben_divers.h"
@@ -270,7 +273,10 @@ bool Game::joueNiveau(const char* nom_niveau, int type) {
 
     clearTexteCool();
 
-    if (!chargeNiveau(nom_niveau)) return false;
+    if (!chargeNiveau(nom_niveau)) {
+        releaseNiveau();
+        return false;
+    }
 
     if (strcmp(nom_niveau, "data/snorkniv.lvl") == 0 ||
         strcmp(nom_niveau, "data/snorkniv2.lvl") == 0) {
@@ -561,6 +567,36 @@ bool Game::chargeNiveau(const char* nom_niveau) {
         return false;
     }
 
+    // Check the fixed part before loading assets or allocating level arrays.
+    fic.seekg(0, std::ios::end);
+    const std::streamoff file_size = fic.tellg();
+    constexpr std::streamoff name_bytes = 7 * 20;
+    if (file_size < name_bytes + static_cast<std::streamoff>(sizeof(int)))
+        return false;
+    fic.seekg(name_bytes);
+    int checked_screens = 0;
+    if (!fic.read(reinterpret_cast<char*>(&checked_screens), sizeof(checked_screens)) ||
+        checked_screens <= 0 || checked_screens > 4096) return false;
+    const uint64_t pixels = static_cast<uint64_t>(checked_screens) * 640;
+    const uint64_t fixed_bytes = name_bytes + sizeof(int) +
+        static_cast<uint64_t>(checked_screens) * sizeof(int) +
+        9 * sizeof(int) +
+        NB_MAX_PLAT * pixels * sizeof(int) +
+        120 * (pixels / 8) * sizeof(bool);
+    if (fixed_bytes + sizeof(int) > static_cast<uint64_t>(file_size)) return false;
+    fic.seekg(static_cast<std::streamoff>(fixed_bytes));
+    int checked_events = 0;
+    if (!fic.read(reinterpret_cast<char*>(&checked_events), sizeof(checked_events)) ||
+        checked_events < 0 ||
+        static_cast<uint64_t>(checked_events) >
+            (static_cast<uint64_t>(file_size) - fixed_bytes - sizeof(int)) /
+                sizeof(FICEVENT)) return false;
+    fic.seekg(0);
+    auto readName = [&]() {
+        return static_cast<bool>(fic.read(buffer, sizeof(buffer))) &&
+               std::memchr(buffer, '\0', sizeof(buffer)) != nullptr;
+    };
+
     debug
         << "---------------------------------------------------------------\n";
     debug << "Loading level <" << nom_niveau << "> from <" << resolved_level
@@ -570,7 +606,7 @@ bool Game::chargeNiveau(const char* nom_niveau) {
 
     // GFX decors
     //
-    fic.read(buffer, 20);
+    if (!readName()) return false;
     strcpy(buffer2, "data/");
     strcat(buffer2, buffer);
 
@@ -585,7 +621,7 @@ bool Game::chargeNiveau(const char* nom_niveau) {
 
     // GFX niveau (fonds animés & co)
     //
-    fic.read(buffer, 20);
+    if (!readName()) return false;
     if (strlen(buffer) != 0) {
         strcpy(buffer2, "data/");
         strcat(buffer2, buffer);
@@ -602,7 +638,7 @@ bool Game::chargeNiveau(const char* nom_niveau) {
 
     // GFX ennemis
     //
-    fic.read(buffer, 20);
+    if (!readName()) return false;
     if (strlen(buffer) != 0) {
         strcpy(buffer2, "data/");
         strcat(buffer2, buffer);
@@ -619,7 +655,7 @@ bool Game::chargeNiveau(const char* nom_niveau) {
 
     // SBK ennemis
     //
-    fic.read(buffer, 20);
+    if (!readName()) return false;
 
     if (strlen(buffer) != 0) {
         strcpy(buffer2, "data/");
@@ -637,7 +673,7 @@ bool Game::chargeNiveau(const char* nom_niveau) {
 
     // Fichier MBK
     //
-    fic.read(buffer, 20);
+    if (!readName()) return false;
     if (strlen(buffer) != 0) {
         strcpy(buffer2, "data/");
         strcat(buffer2, buffer);
@@ -657,7 +693,7 @@ bool Game::chargeNiveau(const char* nom_niveau) {
 
     // Fichier RPG itself
     //
-    fic.read(buffer, 20);
+    if (!readName()) return false;
     if (strlen(buffer) != 0) {
         strcpy(buffer2, "data/");
         strcat(buffer2, buffer);
@@ -673,7 +709,7 @@ bool Game::chargeNiveau(const char* nom_niveau) {
 
     // GFX rpg
     //
-    fic.read(buffer, 20);
+    if (!readName()) return false;
     if (strlen(buffer) != 0) {
         strcpy(buffer2, "data/");
         strcat(buffer2, buffer);
@@ -690,14 +726,18 @@ bool Game::chargeNiveau(const char* nom_niveau) {
 
     // Taille du niveau
     //
-    fic.read(reinterpret_cast<char*>(&scr_level_size), sizeof(scr_level_size));
+    if (!fic.read(reinterpret_cast<char*>(&scr_level_size), sizeof(scr_level_size)) ||
+        scr_level_size != checked_screens) return false;
     level_size = scr_level_size * 640;
 
     // Numéros des écrans à afficher (comme des tiles)
     //
     num_decor = new int[scr_level_size];
-    for (int i = 0; i < scr_level_size; i++)
-        fic.read(reinterpret_cast<char*>(&num_decor[i]), sizeof(int));
+    for (int i = 0; i < scr_level_size; i++) {
+        if (!fic.read(reinterpret_cast<char*>(&num_decor[i]), sizeof(int)) ||
+            num_decor[i] < 0 ||
+            static_cast<size_t>(num_decor[i]) >= pbk_decor.getSize()) return false;
+    }
 
     // Coordonnées de départ des joueurs
     //
@@ -717,35 +757,45 @@ bool Game::chargeNiveau(const char* nom_niveau) {
     //
     // Plateformes
     //
-    y_plat = new int*[NB_MAX_PLAT];
+    y_plat = new int*[NB_MAX_PLAT]();
 
     for (int i = 0; i < NB_MAX_PLAT; i++) {
         y_plat[i] = new int[level_size];
-        fic.read(reinterpret_cast<char*>(y_plat[i]),
-                 (level_size) * sizeof(int));
+        if (!fic.read(reinterpret_cast<char*>(y_plat[i]),
+                      static_cast<std::streamsize>(level_size) * sizeof(int)))
+            return false;
     }
 
     //
     // Murs opaques
     //
     int level_size_8 = level_size / 8;
-    murs_opaques = new bool*[60];
+    std::vector<unsigned char> wall_bytes(static_cast<size_t>(level_size_8));
+    murs_opaques = new bool*[60]();
 
     for (int i = 0; i < 60; i++) {
         murs_opaques[i] = new bool[level_size_8];
-        fic.read(reinterpret_cast<char*>(murs_opaques[i]),
-                 (level_size_8) * sizeof(bool));
+        if (!fic.read(reinterpret_cast<char*>(wall_bytes.data()), level_size_8))
+            return false;
+        for (int x = 0; x < level_size_8; ++x) {
+            if (wall_bytes[x] > 1) return false;
+            murs_opaques[i][x] = wall_bytes[x] != 0;
+        }
     }
 
     //
     // Murs sanglants
     //
-    murs_sanglants = new bool*[60];
+    murs_sanglants = new bool*[60]();
 
     for (int i = 0; i < 60; i++) {
         murs_sanglants[i] = new bool[level_size_8];
-        fic.read(reinterpret_cast<char*>(murs_sanglants[i]),
-                 (level_size_8) * sizeof(bool));
+        if (!fic.read(reinterpret_cast<char*>(wall_bytes.data()), level_size_8))
+            return false;
+        for (int x = 0; x < level_size_8; ++x) {
+            if (wall_bytes[x] > 1) return false;
+            murs_sanglants[i][x] = wall_bytes[x] != 0;
+        }
     }
 
     //
@@ -754,10 +804,16 @@ bool Game::chargeNiveau(const char* nom_niveau) {
     FICEVENT ficevent;
     int nb_events;
 
-    fic.read(reinterpret_cast<char*>(&nb_events), sizeof(nb_events));
+    if (!fic || !fic.read(reinterpret_cast<char*>(&nb_events), sizeof(nb_events)) ||
+        nb_events != checked_events) return false;
 
     for (int i = 0; i < nb_events; i++) {
-        fic.read(reinterpret_cast<char*>(&ficevent), sizeof(ficevent));
+        if (!fic.read(reinterpret_cast<char*>(&ficevent), sizeof(ficevent)))
+            return false;
+        const unsigned char tmp_byte = *(
+            reinterpret_cast<const unsigned char*>(&ficevent) +
+            offsetof(FICEVENT, tmp));
+        if (tmp_byte > 1) return false;
 
         switch (ficevent.event_id) {
             case EVENTID_ENNEMI: {
@@ -1841,10 +1897,10 @@ void Game::showPE(bool bonus, bool fuckOff) {
     int life_up_p2 = 0;
 
     int delai = 0;
-    int xbasep1;
-    bool showp1;
-    int xbasep2;
-    bool showp2;
+    int xbasep1 = 0;
+    bool showp1 = false;
+    int xbasep2 = 0;
+    bool showp2 = false;
 
     systemSurface->BltFast(
         0, 0, backSurface, NULL, DDBLTFAST_NOCOLORKEY | DDBLTFAST_WAIT);
@@ -2418,10 +2474,8 @@ bool Game::loadList(const char* fic) {
     }
 
     nb_part = 0;
-    f >> n;
-
-    while (!f.eof()) {
-        if (n < 0 || n > 2) {
+    while (f >> n) {
+        if (n < 0 || n > 2 || nb_part >= MAX_PART) {
             debug << "File " << fic << " corrupted!\n";
             f.close();
             return false;
@@ -2430,16 +2484,16 @@ bool Game::loadList(const char* fic) {
         type_part[nb_part] = n;
 
         if (n == PART_CINE || n == PART_BRIEFING) {
-            f.getline(fic_names[nb_part], 200, '*');
-            f.getline(fic_names[nb_part], 200);
+            if (!f.getline(fic_names[nb_part], 200, '*') ||
+                !f.getline(fic_names[nb_part], 200)) return false;
             std::replace(fic_names[nb_part],
                          fic_names[nb_part] + strlen(fic_names[nb_part]),
                          '\\',
                          '/');
         } else {
-            f >> type_lvl[nb_part];
-            f.getline(fic_names[nb_part], 200, '*');
-            f.getline(fic_names[nb_part], 200);
+            if (!(f >> type_lvl[nb_part]) ||
+                !f.getline(fic_names[nb_part], 200, '*') ||
+                !f.getline(fic_names[nb_part], 200)) return false;
             std::replace(fic_names[nb_part],
                          fic_names[nb_part] + strlen(fic_names[nb_part]),
                          '\\',
@@ -2447,17 +2501,9 @@ bool Game::loadList(const char* fic) {
         }
 
         nb_part += 1;
-        f >> n;
-
-        if (nb_part > MAX_PART) {
-            debug << "File " << fic << " corrupted!\n";
-            f.close();
-            return false;
-        }
     }
 
-    f.close();
-    return true;
+    return f.eof();
 }
 
 //-----------------------------------------------------------------------------
