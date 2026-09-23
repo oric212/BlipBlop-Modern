@@ -6,7 +6,6 @@ int OptionsMenu::ProcessEvent() {
     in.update();
 
     MenuType next = MenuType(active_menu_->ProcessEvent());
-    in.waitClean();
     switch (next) {
         case MenuType::Main:
             return MenuType::Main;

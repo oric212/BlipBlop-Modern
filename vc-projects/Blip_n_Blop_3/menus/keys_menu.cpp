@@ -7,7 +7,7 @@
 #include "../txt_data.h"
 #include "txt_defines.h"
 
-KeysMenu::KeysMenu(int nb_player) {
+KeysMenu::KeysMenu(int nb_player) : state_(State::Browsing) {
     items_.ShowConfirmPrompt(false);
     player_ = nb_player;
     if (nb_player == 1) {
@@ -62,12 +62,14 @@ int KeysMenu::ProcessEvent() {
         int key = in.waitKey();
         SetKey(key);
     } else {
-        if (in.scanKey(DIK_UP) || in.scanAlias(ALIAS_P1_UP)) {
+		if (in.menuBackPressed()) return MenuType::Options;
+        const int move = in.menuVerticalMove();
+        if (move < 0) {
             items_.MoveUp();
-        } else if (in.scanKey(DIK_DOWN) || in.scanAlias(ALIAS_P1_DOWN)) {
+        } else if (move > 0) {
             items_.MoveDown();
         }
-        if (in.scanKey(DIK_RETURN) || in.scanAlias(ALIAS_P1_FIRE)) {
+        if (in.menuConfirmActionPressed(items_.focused() == items_.size() - 1)) {
             if (items_.focused() == items_.size() - 1) {
                 return MenuType::Main;
             }

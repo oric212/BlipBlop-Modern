@@ -2732,6 +2732,7 @@ void Game::go() {
                     in.waitClean();
                 }
             } else {
+                backSurface->FillRect(nullptr, 0);
                 pbk_inter[1]->PasteTo(backSurface, 0, 0);
 
                 r = menu.update();

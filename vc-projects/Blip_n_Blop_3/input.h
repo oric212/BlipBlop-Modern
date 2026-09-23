@@ -206,6 +206,14 @@ private:
 	bool controllerAliasPressed(int alias) const;
 	InputDevice last_input_device;
 	bool pause_pressed;
+	int menu_direction;
+	Uint32 menu_direction_started;
+	Uint32 menu_direction_repeated;
+	int menu_horizontal_direction;
+	Uint32 menu_horizontal_started;
+	Uint32 menu_horizontal_repeated;
+	bool menu_confirm_held;
+	bool menu_back_held;
 
 public:
 	Input();
@@ -215,6 +223,10 @@ public:
 
 	int scanAlias(int a) const;
 	bool menuConfirmPressed() const;
+	int menuVerticalMove();
+	int menuHorizontalMove();
+	bool menuConfirmActionPressed(bool allow_controller = true);
+	bool menuBackPressed();
 	bool pausePressed();
 	InputDevice lastInputDevice() const { return last_input_device; }
 	inline unsigned int getAlias(int n) const

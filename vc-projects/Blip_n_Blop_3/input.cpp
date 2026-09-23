@@ -36,6 +36,8 @@
 
 namespace {
 constexpr int INPUT_DEVICE_SWITCH_DEAD_ZONE = 12000;
+constexpr Uint32 MENU_REPEAT_DELAY_MS = 350;
+constexpr Uint32 MENU_REPEAT_INTERVAL_MS = 120;
 }
 
 //-----------------------------------------------------------------------------
@@ -52,7 +54,15 @@ Input		in;
 Input::Input()
     : n_joy(0),
       last_input_device(InputDevice::Keyboard),
-      pause_pressed(false)
+      pause_pressed(false),
+      menu_direction(0),
+      menu_direction_started(0),
+      menu_direction_repeated(0),
+      menu_horizontal_direction(0),
+      menu_horizontal_started(0),
+      menu_horizontal_repeated(0),
+      menu_confirm_held(false),
+      menu_back_held(false)
 {
 	memset(js, 0, sizeof(js));
 	memset(buffer, 0, sizeof(buffer));
@@ -74,6 +84,10 @@ void Input::clearState()
 		memset(js[i].buttons, 0, sizeof(js[i].buttons));
 		memset(&js[i].directions, 0, sizeof(js[i].directions));
 	}
+	menu_direction = 0;
+	menu_horizontal_direction = 0;
+	menu_confirm_held = false;
+	menu_back_held = false;
 }
 
 int Input::joystickSlot(SDL_JoystickID instance_id) const
@@ -654,6 +668,74 @@ bool Input::menuConfirmPressed() const
 	const DIJOYSTATE* state = controllerForPlayer(0);
 	return state && SDL_GameControllerGetButton(
 	                    state->controller, SDL_CONTROLLER_BUTTON_A);
+}
+
+int Input::menuVerticalMove()
+{
+	const bool up = scanKey(DIK_UP) || scanAlias(ALIAS_P1_UP);
+	const bool down = scanKey(DIK_DOWN) || scanAlias(ALIAS_P1_DOWN);
+	const int direction = up == down ? 0 : (up ? -1 : 1);
+	const Uint32 now = SDL_GetTicks();
+	if (direction == 0) {
+		menu_direction = 0;
+		return 0;
+	}
+	if (direction != menu_direction) {
+		menu_direction = direction;
+		menu_direction_started = now;
+		menu_direction_repeated = now;
+		return direction;
+	}
+	if (now - menu_direction_started >= MENU_REPEAT_DELAY_MS &&
+	    now - menu_direction_repeated >= MENU_REPEAT_INTERVAL_MS) {
+		menu_direction_repeated = now;
+		return direction;
+	}
+	return 0;
+}
+
+int Input::menuHorizontalMove()
+{
+	const bool left = scanKey(DIK_LEFT) || scanAlias(ALIAS_P1_LEFT);
+	const bool right = scanKey(DIK_RIGHT) || scanAlias(ALIAS_P1_RIGHT);
+	const int direction = left == right ? 0 : (left ? -1 : 1);
+	const Uint32 now = SDL_GetTicks();
+	if (direction == 0) {
+		menu_horizontal_direction = 0;
+		return 0;
+	}
+	if (direction != menu_horizontal_direction) {
+		menu_horizontal_direction = direction;
+		menu_horizontal_started = now;
+		menu_horizontal_repeated = now;
+		return direction;
+	}
+	if (now - menu_horizontal_started >= MENU_REPEAT_DELAY_MS &&
+	    now - menu_horizontal_repeated >= MENU_REPEAT_INTERVAL_MS) {
+		menu_horizontal_repeated = now;
+		return direction;
+	}
+	return 0;
+}
+
+bool Input::menuConfirmActionPressed(bool allow_controller)
+{
+	const bool pressed = scanKey(DIK_RETURN) ||
+	                     scanKey(getAlias(ALIAS_P1_FIRE)) ||
+	                     (allow_controller && menuConfirmPressed());
+	const bool triggered = pressed && !menu_confirm_held;
+	menu_confirm_held = pressed;
+	return triggered;
+}
+
+bool Input::menuBackPressed()
+{
+	const DIJOYSTATE* state = controllerForPlayer(0);
+	const bool pressed = state && SDL_GameControllerGetButton(
+	    state->controller, SDL_CONTROLLER_BUTTON_B);
+	const bool triggered = pressed && !menu_back_held;
+	menu_back_held = pressed;
+	return triggered;
 }
 
 bool Input::pausePressed()

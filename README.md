@@ -22,7 +22,7 @@ The game still renders one complete 640x480 frame. The presentation layer scales
 
 Nearest-neighbor sampling keeps the original pixel-art character instead of smoothing it. Scaling is allowed to be fractional so 4:3 uses as much of the display as possible. For example, a 3840x2160 (4K) display presents the game as 2880x2160 at 4.5x, centered with 480-pixel black bars on the left and right. This preserves the original assumptions and composition, works automatically at modern resolutions, and avoids rewriting the UI, camera, gameplay coordinates, or artwork. It does not create additional graphical detail, fractional nearest-neighbor output is not pixel-perfect integer scaling, and widescreen displays retain unused side space. Strict integer scaling is not currently offered.
 
-The window is resizable and high-DPI aware. Fullscreen uses borderless desktop fullscreen and returns to the saved windowed size and position. These presentation changes do not alter the 640x480 simulation or gameplay timing.
+The window is resizable and high-DPI aware. A first launch with no valid configuration defaults to borderless desktop fullscreen; a saved windowed or fullscreen preference is respected on later launches. Fullscreen returns to the saved windowed size and position. These presentation changes do not alter the 640x480 simulation or gameplay timing.
 
 ## Keyboard and controller input
 
@@ -34,11 +34,11 @@ The original keyboard controls remain active and configurable. Recognized SDL ga
 | Fire | X |
 | Jump / menu confirm (player 1) | A |
 | Super attack | B |
-| Pause | Start (player 1) |
+| Pause / skip intro and cutscenes | Start (player 1) |
 
-The first two recognized controllers are assigned to players 1 and 2. Hot-plug and removal are handled by SDL, and devices that are not in SDL's controller mapping database retain the legacy raw-joystick path. Analog sticks intentionally produce the same digital movement states as the keyboard; they do not change acceleration, physics, or movement speed.
+The first two recognized controllers are assigned to players 1 and 2. Keyboard Escape also skips the intro and cutscenes. Hot-plug and removal are handled by SDL, and devices that are not in SDL's controller mapping database retain the legacy raw-joystick path. Analog sticks intentionally produce the same digital movement states as the keyboard; they do not change acceleration, physics, or movement speed.
 
-Menus show a compact prompt beside the current selection and switch between keyboard, mapped-controller, and raw-joystick wording according to the most recently used device. The level briefing uses the same device context for its existing start prompt. Small stick drift is filtered for prompt switching without changing the original gameplay movement dead zone. The key-remapping screen omits the confirm hint because it waits for a key rather than the normal menu-confirm action.
+Menus show a compact prompt beside the current selection and switch between keyboard, mapped-controller, and raw-joystick wording according to the most recently used device. In menus with a Return or Resume action, the mapped controller's B button goes back; A selects the focused item. The level briefing uses the same device context for its existing start prompt. Small stick drift is filtered for prompt switching without changing the original gameplay movement dead zone. The key-remapping screen omits the confirm hint because it waits for a key rather than the normal menu-confirm action.
 
 ## Configuration and writable data
 

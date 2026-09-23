@@ -46,6 +46,7 @@ struct FSOUND_STREAM {
     Mix_Music* music;
     int loops;
 };
+static FSOUND_STREAM* current_music_stream = nullptr;
 struct FSOUND_SAMPLE {
     Mix_Chunk* chunk;
     int loop;
@@ -133,21 +134,29 @@ FSOUND_STREAM* FSOUND_Stream_OpenFile(const char* filename,
 }
 int FSOUND_Stream_Play(int channel, FSOUND_STREAM* stream) {
     if (!stream || !stream->music) return false;
+    if (current_music_stream == stream && Mix_PlayingMusic()) return true;
     if (Mix_PlayMusic(stream->music, stream->loops) != 0) {
         debug << "Mix_PlayMusic: " << Mix_GetError() << "\n";
         return false;
     }
+    current_music_stream = stream;
     debug << "Music playback started (loops=" << stream->loops << ")\n";
     return true;
 }
 signed char FSOUND_Stream_Stop(FSOUND_STREAM* stream) {
     if (!stream) return false;
-    Mix_HaltMusic();
+    if (current_music_stream == stream) {
+        Mix_HaltMusic();
+        current_music_stream = nullptr;
+    }
     return true;
 }
 signed char FSOUND_Stream_Close(FSOUND_STREAM* stream) {
     if (!stream) return true;
-    if (Mix_PlayingMusic()) Mix_HaltMusic();
+    if (current_music_stream == stream) {
+        Mix_HaltMusic();
+        current_music_stream = nullptr;
+    }
     Mix_FreeMusic(stream->music);
     delete stream;
     return true;

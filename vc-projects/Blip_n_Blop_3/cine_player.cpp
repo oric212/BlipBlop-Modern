@@ -84,7 +84,8 @@ bool CINEPlayer::playScene(const char * file, SDL::Surface * s1, SDL::Surface * 
 
 			renderLoop();
 
-			if (in.scanKey(DIK_ESCAPE)) {
+			const bool controller_skip = in.pausePressed();
+			if (in.scanKey(DIK_ESCAPE) || controller_skip) {
 				fini = true;
 				skiped = true;
 			}

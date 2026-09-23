@@ -64,7 +64,7 @@ bool	cheat_on = false;
 HiScores	hi_scores;
 
 bool	winSet;
-bool fullscreen = false; // THIS IS UGLY AS FUCK. WAY TOO MANY GLOBALS
+bool fullscreen = true; // THIS IS UGLY AS FUCK. WAY TOO MANY GLOBALS
 
 
 void load_BB3_config(const char * cfg_file)
@@ -79,7 +79,7 @@ void load_BB3_config(const char * cfg_file)
 		const long file_size = ftell(fic);
 		rewind(fic);
 		bool loaded_vsync = true;
-		bool loaded_fullscreen = false;
+		bool loaded_fullscreen = fullscreen;
 		int loaded_language = LANG_UK;
 		std::array<int, aliases.size()> loaded_aliases{};
 		const long legacy_size = sizeof(loaded_vsync) + sizeof(loaded_language) +
@@ -147,6 +147,7 @@ void save_BB3_config(const char * cfg_file)
 
 void set_default_config(bool reset_lang)
 {
+	fullscreen = true;
 	if (reset_lang)
 		lang_type = LANG_UK;
 

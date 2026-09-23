@@ -12,13 +12,14 @@ StartMenu::StartMenu() {
 }
 
 int StartMenu::ProcessEvent() {
-    if (in.scanKey(DIK_UP) || in.scanAlias(ALIAS_P1_UP)) {
+	if (in.menuBackPressed()) return MenuType::Main;
+    const int move = in.menuVerticalMove();
+    if (move < 0) {
         items_.MoveUp();
-    } else if (in.scanKey(DIK_DOWN) || in.scanAlias(ALIAS_P1_DOWN)) {
+    } else if (move > 0) {
         items_.MoveDown();
     }
-    if (in.scanKey(DIK_RETURN) || in.scanAlias(ALIAS_P1_FIRE) ||
-        in.menuConfirmPressed()) {
+    if (in.menuConfirmActionPressed()) {
         switch (items_.focused()) {
             case 0:
                 return MenuType::Game_1;
