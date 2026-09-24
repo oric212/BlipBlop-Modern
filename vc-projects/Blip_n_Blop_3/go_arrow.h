@@ -16,6 +16,8 @@ class GoArrow {
         phase_ = Phase::No;
         delay_ = 0;
         anim_step_ = 1;
+        stop_requested_ = false;
+        bounce_count_ = 0;
     }
 
     void Update() {
@@ -37,7 +39,8 @@ class GoArrow {
 
     void Leave() {
         if (phase_ != Phase::No) {
-            phase_ = Phase::Leaving;
+            // The original arrow finishes three bounces before leaving.
+            stop_requested_ = true;
         } else {
             delay_ = 0;
         }
@@ -46,6 +49,8 @@ class GoArrow {
     void Come() {
         if (phase_ == Phase::No) {
             phase_ = Phase::Coming;
+            x_ = -10;
+            bounce_count_ = 0;
         }
     }
 
@@ -58,9 +63,14 @@ class GoArrow {
 
    private:
     void update_no() {
+        if (scroll_locked || offset >= level_size - 640) return;
         delay_ += 1;
         if (delay_ >= 300) {
             phase_ = Phase::Coming;
+            x_ = -10;
+            bounce_count_ = 0;
+            stop_requested_ = false;
+            update_coming();
         }
     }
 
@@ -70,6 +80,7 @@ class GoArrow {
         if (x_ == 640) {
             phase_ = Phase::Bouncing;
             theta_ = 0;
+            bounce_count_ = 1;
         }
     }
 
@@ -84,6 +95,9 @@ class GoArrow {
         }
 
         x_ = 640 - x;
+        if (x == 0 && ++bounce_count_ >= 3 && stop_requested_) {
+            phase_ = Phase::Leaving;
+        }
     }
 
     void update_leaving() {
@@ -103,4 +117,6 @@ class GoArrow {
     int delay_;
     int x_;
     int anim_step_;
+    bool stop_requested_;
+    int bounce_count_;
 };

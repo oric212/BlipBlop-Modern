@@ -45,6 +45,7 @@ void RPGPlayer::attachFile(const char * f)
 
 bool RPGPlayer::startPlay(int n)
 {
+	in.discardControllerConfirm();
 	fic_.open(fic_name_.c_str());
 
 	if (fic_.is_open() == 0) {
@@ -102,7 +103,7 @@ bool RPGPlayer::drawScene(SDL::Surface * surf)
 
 	in.update();
 
-	if (in.anyKeyPressed()) {
+	if (in.confirmOrAnyKeyPressed()) {
 		if (in.scanKey(DIK_ESCAPE)) {
 			in.waitClean();
 

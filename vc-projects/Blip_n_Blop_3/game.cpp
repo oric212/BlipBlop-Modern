@@ -190,7 +190,7 @@ void Game::jouePartie(int nbj, int idj) {
         if (!in.anyKeyPressed()) mbk2.play(0);
 
         in.waitClean();
-        in.waitKey();
+        in.waitKey(true);
         in.waitClean();
         mbk2.stop();
 
@@ -203,7 +203,7 @@ void Game::jouePartie(int nbj, int idj) {
         DDFlip();
 
         in.waitClean();
-        in.waitKey();
+        in.waitKey(true);
         in.waitClean();
 
         mbk.stop();
@@ -399,6 +399,7 @@ bool Game::joueNiveau(const char* nom_niveau, int type) {
     Sprite* s = list_joueurs[0];
     offset = s->x;
     offset -= (offset % 640);
+    last_x_go_ = offset;
 
     n_img = 0;
     xTex = 0;
@@ -453,7 +454,8 @@ bool Game::joueNiveau(const char* nom_niveau, int type) {
 
         mbk_inter.play(2);
         in.waitClean();
-        in.waitKey();
+        in.waitKey(true);
+        in.waitClean();
         briefing = false;
     }
 
@@ -2206,7 +2208,8 @@ void Game::showPE(bool bonus, bool fuckOff) {
 
     if (!app_killed) {
         in.waitClean();
-        in.waitKey();
+        in.waitKey(true);
+        in.waitClean();
     }
 
     if (showp1) player1->setScore(total_p1);
@@ -2282,11 +2285,11 @@ void Game::UpdateCollection(const T& xs) {
 //-----------------------------------------------------------------------------
 
 void Game::updateFlecheGo() {
-    go_.Update();
     if (last_x_go_ != offset) {
         last_x_go_ = offset;
         go_.Leave();
     }
+    go_.Update();
 }
 
 //-----------------------------------------------------------------------------
@@ -2616,7 +2619,7 @@ void Game::showGameOver() {
 
     mbk_inter.play(1);
 
-    while (!app_killed && x > 20 && !in.anyKeyPressed()) {
+    while (!app_killed && x > 20 && !in.confirmOrAnyKeyPressed()) {
         manageMsg();
         checkRestore();
 
@@ -2709,6 +2712,7 @@ void Game::go() {
     TitleScreen menu;
     int r;
     static int zob = 0;
+    constexpr std::uint32_t attract_idle_ms = 60000;
 
     // Clear l'écran en noir + LOADING
     //
@@ -2747,7 +2751,7 @@ void Game::go() {
                 diff_start.Reset();
             }
 
-            if (diff_start.elapsed() >= 10000) {
+            if (diff_start.elapsed() >= attract_idle_ms) {
                 switch (zob) {
                     case 0:
                     case 2:
@@ -2773,13 +2777,13 @@ void Game::go() {
                 }
 
                 zob = (zob + 1) % 8;
-                //				diff_start = GetTickCount();
-
                 menu.stop();
                 menu.start();
 
+                // Give the menu a full idle interval between attract screens.
+                diff_start.Reset();
+
                 if (in.anyKeyPressed()) {
-                    diff_start.Reset();
                     in.waitClean();
                 }
             } else {

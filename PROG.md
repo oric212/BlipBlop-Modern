@@ -253,8 +253,40 @@ A separate eight-second standalone launch from an unrelated `%TEMP%` working dir
 
 ## Current task
 
-The release-blocking v1.0.0 regressions are fixed and interactively verified. Final standalone packaging and republication are in progress.
+Earlier v1.0.0 regressions were fixed and interactively verified. The later Pokémon progression report remains unresolved, so republication is on hold.
 
 ## Next task
 
 Prompt 9 remains deferred; broader level-by-level gameplay, ASan gameplay coverage, and long-duration stress testing remain future verification work.
+
+# Current release blocker: GO progression and controller directions
+
+## Pending confirmation, GO-arrow, and left-stick follow-up
+
+### Mid-stage RPG dialogue A confirmation
+
+The user manually verified the prior briefing A confirmation, GO-sign behavior, D-pad, tightened left stick, and menu/controller changes. Mid-stage dialogue still ignored A because `RPGPlayer::drawScene()` used `Input::anyKeyPressed()`, which checks keyboard and raw-joystick state but not mapped-controller A. RPG page advancement now uses the one-shot `confirmOrAnyKeyPressed()` path. `RPGPlayer::startPlay()` discards any A press pending from gameplay; each consumed A button-down can advance at most one page, and the existing end-of-dialogue `waitClean()` waits for A release before returning to gameplay. Keyboard handling and the RPG timing guard remain unchanged. The cinematic player has only an Escape/Start whole-scene skip path, not an equivalent per-page confirm, and was not changed. A physical mid-stage dialogue retest remains pending; the changed path was inspected and both x64 configurations build successfully.
+
+The pre-stage briefing and other blocking "press a key" screens called `Input::waitKey()`. Mapped-controller raw joystick events are intentionally excluded, and `waitKey()` did not consume the controller A button-down event used by menus. These screens now opt into A as a one-shot confirm while key-remapping/name-entry use the unchanged key-only path. `waitClean()` now waits for mapped A to be released and clears any pending A event, preventing a held press from carrying into gameplay or the next screen. Game Over's equivalent any-key loop also accepts one mapped A press. The briefing hint remains; normal menu confirm labels remain removed.
+
+The missing GO arrow came from the earlier `GoArrow` refactor already present in `upstream/master`: its `Leave()` changed the arrow directly to the exit phase on the first camera-offset change, often while its entrance sprite was still offscreen. The pre-refactor original code merely requested a stop and waited until the arrow had bounced three times. `GoArrow` again waits for those bounces, allows its 300-update idle appearance only when scrolling is unlocked and the camera is before the level end, and initializes the last camera offset at level start. The original draw coordinates (screen y=150, entrance x=-10 to x=640) and level lock data are unchanged; no confirmation is required to show GO. In the Pokémon bonus level, the starting lock is at offset 0 and clears when flag 0 equals 1, so its starting GO cue should now complete its entrance rather than disappear on camera movement. This source-level check is not a live visual verification; the reported Pokémon forward softlock remains unverified and no new progression rule was added.
+
+Mapped left-stick directions now engage at magnitude 18000 and release below 13000, rather than sharing the legacy raw-joystick 4200 dead zone. The separate press/release thresholds reduce center noise and direction chatter while allowing both axes for deliberate diagonals. D-pad button reads, keyboard arrow state, menu repeat timing, controller button mappings, and raw-joystick input are unchanged. Physical stick feel and live GO/briefing behavior still need a controller/gameplay pass.
+
+After these changes, Debug x64 and Release x64 both built successfully with VS2022. The Release `deploy` target refreshed `game-build/`. The user subsequently verified briefing A, GO-sign behavior, D-pad, left-stick feel, and menu/controller behavior in a manual playthrough. Mid-stage RPG A awaits a physical retest. Pokémon forward progression remains a separate unresolved report. v1.0.0 has not been republished.
+
+## Original title-screen attract sequence
+
+The idle High Scores and Intro transitions are intentional original game behavior, not menu confirmation. `Game::go()` resets a `Chrono` on input and, after 10 seconds without any input, advances an eight-position attract sequence: main artwork at positions 0, 2, 4, and 6; High Scores at 1; Credits at 5; and Intro at 3 and 7. `showMainScreen()` runs for up to 5 seconds and `showHighScores()` for up to 10 seconds. The sequence and 10-second threshold exist verbatim in `upstream/master`. The original code did not reset the outer idle timer after an attract screen, so subsequent screens could begin immediately after the previous one returned.
+
+At the user's request, the sequence is retained but the idle threshold is 60 seconds and the outer timer resets after every attract screen. This gives the normal menu a fresh idle interval between attract displays. Menu navigation and confirmation are unaffected by this timing change. Debug and Release x64 built successfully, and `deploy` refreshed `game-build/`. The adjustment still needs a timed interactive check; no controller result is inferred from the original idle behavior.
+
+## Controller menu regression follow-up
+
+Menu confirm previously polled the current mapped-controller A state together with Enter and the configured fire key. A held A could be observed by a subsequent menu after a transition, so navigation and confirmation were not isolated as separate events. Menu A confirmation now uses only a player-one `SDL_CONTROLLERBUTTONDOWN` A event, consumed once by `menuConfirmActionPressed`; `syncMenuTransition` and input clearing discard any pending A event. Keyboard Enter and the configured fire key retain their edge handling. Navigation still uses the existing digital D-pad/arrow direction and held-repeat logic; mapped controllers remain excluded from the raw joystick state path. This change is retained as a menu input improvement, but it was not the cause of the idle High Scores/Intro transitions.
+
+The contextual `ENTER`, `[A]`, and `JOY` labels were removed from the shared menu list renderer, including Main, Start, Options, Controls, and Pause. The level-briefing input hint remains. The user has since manually verified the menu/controller behavior and reached gameplay. v1.0.0 has not been republished.
+
+The Pokémon bonus stage (`dork.lvl`) progression report remains open. Source inspection found that `GO` is started only when `Game::updateLock` clears `scroll_locked`; camera movement then depends on `updateScrolling`, player movement, collision geometry, and the victory flags. The level contains locks at offsets 0, 1199, and 1906. Its victory check starts at offset 1831 with flag 0 equal to 3, while the last lock clears at flag 0 equal to 4. This ordering may make the final victory condition unreachable if the player advances before its 200-tick countdown completes. This is a source/data finding, not a reproduced diagnosis; the reported obstruction may also be controller input or collision geometry.
+
+The input change reads mapped-controller D-pad buttons through one digital direction helper and excludes mapped controllers from the raw joystick event state. Raw joystick fallback remains for devices without an SDL game-controller mapping. The user manually verified the D-pad and tightened left-stick behavior. The Pokémon forward-progression report remains unresolved; v1.0.0 has not been republished.

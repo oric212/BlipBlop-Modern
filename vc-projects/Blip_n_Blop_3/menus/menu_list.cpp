@@ -1,7 +1,6 @@
 #include "menu_list.h"
 
 #include "../globals.h"
-#include "../input.h"
 #include "../lgx_packer.h"
 
 int MenuList::ComputeWidth() const {
@@ -53,13 +52,4 @@ void MenuList::Draw(SDL::Surface* surf) const {
         y += 30;
     }
 
-    if (show_confirm_prompt_) {
-        const InputDevice device = in.lastInputDevice();
-        const char* prompt = device == InputDevice::GameController
-                                 ? "[A]"
-                                 : (device == InputDevice::RawJoystick ? "JOY"
-                                                                       : "ENTER");
-        const int focused_y = 240 - items_.size() * 15 + focused_ * 30;
-        fnt_rpg.print(surf, 320 - ComputeWidth() + 8, focused_y + 6, prompt);
-    }
 }

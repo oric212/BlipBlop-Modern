@@ -8,7 +8,6 @@
 #include "txt_defines.h"
 
 KeysMenu::KeysMenu(int nb_player) : state_(State::Browsing) {
-    items_.ShowConfirmPrompt(false);
     player_ = nb_player;
     if (nb_player == 1) {
         dat_ = {std::make_tuple(0, TXT_UP, ALIAS_P1_UP),

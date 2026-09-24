@@ -170,6 +170,8 @@ struct DIJOYSTATE
 	SDL_Joystick *handle;
 	SDL_GameController *controller;
 	SDL_JoystickID instance_id;
+	mutable signed char analog_x;
+	mutable signed char analog_y;
 	unsigned char buttons[128];	//Joypad with more than 187 buttons? (100/101/102/103 is for directions)
 	struct
 	{
@@ -203,6 +205,7 @@ private:
 	bool openJoystick(int device_index);
 	void closeJoystick(SDL_JoystickID instance_id);
 	const DIJOYSTATE* controllerForPlayer(int player) const;
+	bool controllerDpadPressed(int player, unsigned int direction) const;
 	bool controllerAliasPressed(int alias) const;
 	InputDevice last_input_device;
 	bool pause_pressed;
@@ -213,6 +216,7 @@ private:
 	Uint32 menu_horizontal_started;
 	Uint32 menu_horizontal_repeated;
 	bool menu_confirm_held;
+	bool menu_controller_confirm_pending;
 	bool menu_back_held;
 
 public:
@@ -230,6 +234,7 @@ public:
 	bool pausePressed();
 	void syncMenuTransition();
 	void discardPausePress() { pause_pressed = false; }
+	void discardControllerConfirm() { menu_controller_confirm_pending = false; }
 	InputDevice lastInputDevice() const { return last_input_device; }
 	inline unsigned int getAlias(int n) const
 	{
@@ -243,7 +248,8 @@ public:
 	bool	open(int flags = BINPUT_KEYB | BINPUT_JOY);
 	void	setAlias(int a, unsigned int val);
 
-	unsigned int		waitKey();
+	unsigned int		waitKey(bool allow_controller_confirm = false);
+	bool confirmOrAnyKeyPressed();
 
 	void	waitClean();
 	void	update();

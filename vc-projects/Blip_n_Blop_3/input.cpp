@@ -36,8 +36,19 @@
 
 namespace {
 constexpr int INPUT_DEVICE_SWITCH_DEAD_ZONE = 12000;
+constexpr int CONTROLLER_STICK_ENTER = 18000;
+constexpr int CONTROLLER_STICK_RELEASE = 13000;
 constexpr Uint32 MENU_REPEAT_DELAY_MS = 350;
 constexpr Uint32 MENU_REPEAT_INTERVAL_MS = 120;
+
+signed char stickDirection(Sint16 value, signed char previous)
+{
+	if (previous < 0 && value <= -CONTROLLER_STICK_RELEASE) return -1;
+	if (previous > 0 && value >= CONTROLLER_STICK_RELEASE) return 1;
+	if (value <= -CONTROLLER_STICK_ENTER) return -1;
+	if (value >= CONTROLLER_STICK_ENTER) return 1;
+	return 0;
+}
 }
 
 //-----------------------------------------------------------------------------
@@ -62,6 +73,7 @@ Input::Input()
       menu_horizontal_started(0),
       menu_horizontal_repeated(0),
       menu_confirm_held(false),
+      menu_controller_confirm_pending(false),
       menu_back_held(false)
 {
 	memset(js, 0, sizeof(js));
@@ -83,10 +95,12 @@ void Input::clearState()
 	for (int i = 0; i < MAX_JOY; ++i) {
 		memset(js[i].buttons, 0, sizeof(js[i].buttons));
 		memset(&js[i].directions, 0, sizeof(js[i].directions));
+		js[i].analog_x = js[i].analog_y = 0;
 	}
 	menu_direction = 0;
 	menu_horizontal_direction = 0;
 	menu_confirm_held = false;
+	menu_controller_confirm_pending = false;
 	menu_back_held = false;
 	pause_pressed = false;
 }
@@ -145,6 +159,7 @@ bool Input::openJoystick(int device_index)
 	            sizeof(js[slot].name));
 	memset(js[slot].buttons, 0, sizeof(js[slot].buttons));
 	memset(&js[slot].directions, 0, sizeof(js[slot].directions));
+	js[slot].analog_x = js[slot].analog_y = 0;
 	++n_joy;
 	debug << "Opened " << (controller ? "game controller" : "raw joystick")
 	      << " slot " << slot << ": " << js[slot].name
@@ -165,7 +180,9 @@ void Input::closeJoystick(SDL_JoystickID instance_id)
 	js[slot].instance_id = -1;
 	memset(js[slot].buttons, 0, sizeof(js[slot].buttons));
 	memset(&js[slot].directions, 0, sizeof(js[slot].directions));
+	js[slot].analog_x = js[slot].analog_y = 0;
 	if (n_joy > 0) --n_joy;
+	menu_controller_confirm_pending = false;
 	debug << "Closed joystick instance " << instance_id << "\n";
 }
 
@@ -341,6 +358,7 @@ void Input::update()
 		if (e.type == SDL_JOYBUTTONDOWN || e.type == SDL_JOYBUTTONUP)
 		{
 			const int slot = joystickSlot(e.jbutton.which);
+			if (slot >= 0 && js[slot].controller) continue;
 			if (e.type == SDL_JOYBUTTONDOWN && slot >= 0)
 				last_input_device = js[slot].controller
 				                        ? InputDevice::GameController
@@ -353,17 +371,20 @@ void Input::update()
 			last_input_device = InputDevice::GameController;
 			const DIJOYSTATE* player_one = controllerForPlayer(0);
 			if (player_one && player_one->instance_id == e.cbutton.which &&
+			    e.cbutton.button == SDL_CONTROLLER_BUTTON_A)
+				menu_controller_confirm_pending = true;
+			if (player_one && player_one->instance_id == e.cbutton.which &&
 			    e.cbutton.button == SDL_CONTROLLER_BUTTON_START)
 				pause_pressed = true;
 		}
 		if (e.type == SDL_CONTROLLERAXISMOTION &&
-		    (e.caxis.value < -INPUT_DEVICE_SWITCH_DEAD_ZONE ||
-		     e.caxis.value > INPUT_DEVICE_SWITCH_DEAD_ZONE))
+		    (e.caxis.value < -CONTROLLER_STICK_ENTER ||
+		     e.caxis.value > CONTROLLER_STICK_ENTER))
 			last_input_device = InputDevice::GameController;
 		if (e.type == SDL_JOYHATMOTION)
 		{
 			const int slot = joystickSlot(e.jhat.which);
-			if (slot < 0) continue;
+			if (slot < 0 || js[slot].controller) continue;
 			last_input_device = js[slot].controller
 			                        ? InputDevice::GameController
 			                        : InputDevice::RawJoystick;
@@ -385,7 +406,7 @@ void Input::update()
 		if (e.type == SDL_JOYAXISMOTION)
 		{
 			const int slot = joystickSlot(e.jaxis.which);
-			if (slot < 0) continue;
+			if (slot < 0 || js[slot].controller) continue;
 			if (e.jaxis.value < -INPUT_DEVICE_SWITCH_DEAD_ZONE ||
 			    e.jaxis.value > INPUT_DEVICE_SWITCH_DEAD_ZONE)
 				last_input_device = js[slot].controller
@@ -456,7 +477,7 @@ void Input::update()
 // Desc: Attends que l'utilisateur tape une touche et renvoie sa valeur
 //-----------------------------------------------------------------------------
 
-unsigned int Input::waitKey()
+unsigned int Input::waitKey(bool allow_controller_confirm)
 {
 	unsigned int	key = 0;
 
@@ -464,6 +485,10 @@ unsigned int Input::waitKey()
 	{
 		update();
 		if (app_killed) return 0;
+		if (allow_controller_confirm && menu_controller_confirm_pending) {
+			menu_controller_confirm_pending = false;
+			return DIK_RETURN;
+		}
 		for (int i = 0; i < 255; i++)
 		{
 			if (buffer[i] != 0)
@@ -548,6 +573,7 @@ unsigned int Input::waitKey()
 
 void Input::waitClean()
 {
+	menu_controller_confirm_pending = false;
 	//Waits for all keys to be released?
 	while (1)
 	{
@@ -584,10 +610,15 @@ void Input::waitClean()
 		{
 			if (js[k].handle && (js[k].directions.down || js[k].directions.up || js[k].directions.left || js[k].directions.right))
 			j = true;
+			if (js[k].controller && SDL_GameControllerGetButton(
+			    js[k].controller, SDL_CONTROLLER_BUTTON_A))
+				j = true;
 		}
 
-		if (!j)
+		if (!j) {
+			menu_controller_confirm_pending = false;
 			return;
+		}
 	}
 	/*unsigned int		i, j = 1;		// Bcoz si j = 0 alors on sort tout de suite!
 
@@ -627,20 +658,41 @@ const DIJOYSTATE* Input::controllerForPlayer(int player) const
 	return nullptr;
 }
 
+bool Input::controllerDpadPressed(int player, unsigned int direction) const
+{
+	const DIJOYSTATE* state = controllerForPlayer(player);
+	if (!state) return false;
+	SDL_GameControllerButton button;
+	switch (direction) {
+		case DIK_LEFT: button = SDL_CONTROLLER_BUTTON_DPAD_LEFT; break;
+		case DIK_RIGHT: button = SDL_CONTROLLER_BUTTON_DPAD_RIGHT; break;
+		case DIK_UP: button = SDL_CONTROLLER_BUTTON_DPAD_UP; break;
+		case DIK_DOWN: button = SDL_CONTROLLER_BUTTON_DPAD_DOWN; break;
+		default: return false;
+	}
+	return SDL_GameControllerGetButton(state->controller, button) != 0;
+}
+
 bool Input::controllerAliasPressed(int alias) const
 {
 	const int player = alias >= ALIAS_P2_UP ? 1 : 0;
 	const DIJOYSTATE* state = controllerForPlayer(player);
 	if (!state) return false;
 	SDL_GameController* controller = state->controller;
-	const bool left = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_LEFT) ||
-	                  SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTX) < -DEAD_ZONE;
-	const bool right = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_RIGHT) ||
-	                   SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTX) > DEAD_ZONE;
-	const bool up = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_UP) ||
-	                SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTY) < -DEAD_ZONE;
-	const bool down = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_DOWN) ||
-	                  SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTY) > DEAD_ZONE;
+	state->analog_x = stickDirection(
+	    SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTX),
+	    state->analog_x);
+	state->analog_y = stickDirection(
+	    SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTY),
+	    state->analog_y);
+	const bool left = controllerDpadPressed(player, DIK_LEFT) ||
+	                  state->analog_x < 0;
+	const bool right = controllerDpadPressed(player, DIK_RIGHT) ||
+	                   state->analog_x > 0;
+	const bool up = controllerDpadPressed(player, DIK_UP) ||
+	                state->analog_y < 0;
+	const bool down = controllerDpadPressed(player, DIK_DOWN) ||
+	                  state->analog_y > 0;
 
 	switch (alias) {
 		case ALIAS_P1_LEFT: case ALIAS_P2_LEFT: return left;
@@ -722,10 +774,11 @@ int Input::menuHorizontalMove()
 bool Input::menuConfirmActionPressed(bool allow_controller)
 {
 	const bool pressed = scanKey(DIK_RETURN) ||
-	                     scanKey(getAlias(ALIAS_P1_FIRE)) ||
-	                     (allow_controller && menuConfirmPressed());
-	const bool triggered = pressed && !menu_confirm_held;
+	                     scanKey(getAlias(ALIAS_P1_FIRE));
+	const bool triggered = (pressed && !menu_confirm_held) ||
+	                       (allow_controller && menu_controller_confirm_pending);
 	menu_confirm_held = pressed;
+	menu_controller_confirm_pending = false;
 	return triggered;
 }
 
@@ -758,7 +811,8 @@ void Input::syncMenuTransition()
 	menu_direction_started = menu_direction_repeated = SDL_GetTicks();
 	menu_horizontal_started = menu_horizontal_repeated = SDL_GetTicks();
 	menu_confirm_held = scanKey(DIK_RETURN) ||
-	                    scanKey(getAlias(ALIAS_P1_FIRE)) || menuConfirmPressed();
+	                    scanKey(getAlias(ALIAS_P1_FIRE));
+	menu_controller_confirm_pending = false;
 	const DIJOYSTATE* state = controllerForPlayer(0);
 	menu_back_held = state && SDL_GameControllerGetButton(
 	    state->controller, SDL_CONTROLLER_BUTTON_B);
@@ -864,6 +918,14 @@ bool Input::anyKeyPressed()
 			if (scanKey(k + j))
 				key = k + j;
 	}*/
+}
+
+bool Input::confirmOrAnyKeyPressed()
+{
+	const bool key_pressed = anyKeyPressed();
+	const bool controller_confirm = menu_controller_confirm_pending;
+	menu_controller_confirm_pending = false;
+	return key_pressed || controller_confirm;
 }
 
 int Input::scanKey(unsigned int k) const
