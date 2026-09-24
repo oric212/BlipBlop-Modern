@@ -1,5 +1,15 @@
 # BlipBlop-Modern Progress
 
+## Current status (v1.0.1)
+
+**Blip & Blop Modern v1.0.1 is published.** Tag `v1.0.1` points to commit `0ecdeb1ade7705f7547db8b96c1b02076db2724f`. The [GitHub Release](https://github.com/oric212/BlipBlop-Modern/releases/tag/v1.0.1) includes `BlipBlop-Modern-v1.0.1-Windows-x64.zip` (54,842,752 bytes; SHA-256 `AC0066327AE6A8BE5EAE2809796116A4C8F4BA0E39239FC5BF7C8B0F347608FF`). The tag was pushed and the ZIP attachment was verified.
+
+The final VS2022 Release x64 build and deployment succeeded. `game-build/BlipnBlop.exe` matched the Release executable byte for byte (SHA-256 `DBDAC3CE83DD734DF92D463ABEA327F9171F5D16A609222310F0B5DD2F5CA785`). The ZIP contains only the game EXE, ten required runtime DLLs, and 128 original data files. A bounded standalone smoke launch from an unrelated temporary working directory remained alive for ten seconds and created its config and high-score files; it was then stopped by the harness, so that check does not establish clean exit or interactive behavior.
+
+The user manually tested the current `game-build` and reported that it works correctly, including briefing-screen A confirmation, GO-sign presentation, D-pad, tightened left stick, and menu/controller behavior. The mid-stage RPG dialogue A path was fixed and built, but a separate physical-controller retest of that exact path is not documented. This is not exhaustive level or device coverage.
+
+**Open investigation:** The reported Pokémon bonus-stage forward-progression problem has not been reproduced or diagnosed conclusively. The source/data ordering concern described below remains a hypothesis. Broader level-by-level, boss, dialogue, AddressSanitizer gameplay, and long-duration stress checks remain future verification work.
+
 ## Current build status
 
 The game configures and builds successfully as a native x64 Release executable with Visual Studio 2022, CMake 3.29.5, MSVC 19.42.34435, SDL2 2.32.10, and SDL2_mixer 2.8.2. Dependencies are declared in `vcpkg.json`; its registry baseline is pinned for repeatability and the `mpg123` feature is enabled because the shipped data includes MP3 music.
@@ -18,7 +28,7 @@ Result: `out/build-vs2022/vc-projects/Blip_n_Blop_3/Release/BlipnBlop.exe` and t
 
 The Visual Studio-bundled vcpkg client was also tried. Its pinned older ports referenced a removed MSYS2 pkgconf archive, while current ports require a newer vcpkg client. A current workspace-local vcpkg checkout succeeded. Build directories are ignored and are not repository content.
 
-## Current runtime status
+## Early runtime smoke tests
 
 A bounded development smoke launch was performed from `vc-projects/Blip_n_Blop_3`. Because the build-tree executable has no adjacent `data/`, the documented legacy working-directory fallback selected the source game directory. The process remained alive for eight seconds and was then stopped intentionally.
 
@@ -253,13 +263,13 @@ A separate eight-second standalone launch from an unrelated `%TEMP%` working dir
 
 ## Current task
 
-Earlier v1.0.0 regressions were fixed and interactively verified. The later Pokémon progression report remains unresolved, so republication is on hold.
+v1.0.1 is released. Reproduce and diagnose the reported Pokémon bonus-stage forward-progression problem without changing original GO-sign positions or progression rules without evidence.
 
 ## Next task
 
 Prompt 9 remains deferred; broader level-by-level gameplay, ASan gameplay coverage, and long-duration stress testing remain future verification work.
 
-# Current release blocker: GO progression and controller directions
+# v1.0.1 input and GO follow-up (release history)
 
 ## Pending confirmation, GO-arrow, and left-stick follow-up
 

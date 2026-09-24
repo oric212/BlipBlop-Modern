@@ -6,13 +6,17 @@ This repository builds upon the original Blip'n Blop source code and the work of
 
 See [PROG.md](PROG.md) for the current verified status and [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the staged modernization roadmap.
 
+## Latest release
+
+[Blip & Blop Modern v1.0.1](https://github.com/oric212/BlipBlop-Modern/releases/tag/v1.0.1) is available as a standalone Windows x64 ZIP. It includes the controller and menu fixes, restored original GO-sign presentation, and a less frequent title-screen attract sequence. See [PROG.md](PROG.md) for verification details and remaining open investigations.
+
 ## Modernization approach
 
 This remains the original game rather than a remake. Gameplay runs in its original 640x480 coordinate system with the original assets, levels, physics, timing, and rules. The modernization is concentrated in the Windows build, SDL platform layer, display presentation, resource loading, input, audio compatibility, and safe persistence.
 
 ## Windows build and standalone runtime
 
-The current target is a native x64 Windows application built with Visual Studio 2022, CMake, SDL2, and SDL2_mixer. Build configuration and dependency versions are recorded in the repository's CMake files and `vcpkg.json`. The executable embeds a multi-resolution icon cropped from the original Blip and Blop menu artwork. The CMake `deploy` target assembles the ignored `game-build/` directory with `BlipnBlop.exe`, the original `data/` tree, and only the SDL, codec, and MSVC runtime DLLs the game needs. This folder can be moved and launched normally without a source-tree working directory or development tools; it is the working distribution layout, not yet a final release archive.
+The current target is a native x64 Windows application built with Visual Studio 2022, CMake, SDL2, and SDL2_mixer. Build configuration and dependency versions are recorded in the repository's CMake files and `vcpkg.json`. The executable embeds a multi-resolution icon cropped from the original Blip and Blop menu artwork. The CMake `deploy` target assembles the ignored `game-build/` directory with `BlipnBlop.exe`, the original `data/` tree, and only the SDL, codec, and MSVC runtime DLLs the game needs. This folder can be moved and launched normally without a source-tree working directory or development tools; its verified contents are packaged in the v1.0.1 release archive.
 
 Verified local build and deployment commands are maintained in [PROG.md](PROG.md).
 
@@ -40,7 +44,7 @@ The original keyboard controls remain active and configurable. Recognized SDL ga
 
 The first two recognized controllers are assigned to players 1 and 2. Keyboard Escape also skips the intro and cutscenes. Hot-plug and removal are handled by SDL, and devices that are not in SDL's controller mapping database retain the legacy raw-joystick path. Analog sticks intentionally produce the same digital movement states as the keyboard; they do not change acceleration, physics, or movement speed.
 
-Menus show a compact prompt beside the current selection and switch between keyboard, mapped-controller, and raw-joystick wording according to the most recently used device. In menus with a Return or Resume action, the mapped controller's B button goes back; A selects the focused item. The level briefing uses the same device context for its existing start prompt. Small stick drift is filtered for prompt switching without changing the original gameplay movement dead zone. The key-remapping screen omits the confirm hint because it waits for a key rather than the normal menu-confirm action.
+Menus use D-pad or left-stick directions to move the selection without activating it. In menus with a Return or Resume action, the mapped controller's B button goes back; one A press selects the focused item. Generic ENTER, A, and JOY confirm labels have been removed from menu lists. The level briefing retains its start prompt and accepts controller A; mid-stage RPG dialogue also accepts A. The mapped left stick uses separate engage and release thresholds to reduce drift and unstable direction changes, while D-pad and keyboard arrows keep their digital behavior.
 
 ## Configuration and writable data
 
